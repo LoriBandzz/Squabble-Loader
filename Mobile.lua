@@ -339,73 +339,26 @@ local blockThread=nil
 local blockAnimTrack=nil
 local blockEnabled=false
 local BLOCK_INTERVAL=2.5
-
-local function getBlockTrack()
-	if blockAnimTrack then return blockAnimTrack end
-	local char=player.Character
-	local hum=char and char:FindFirstChildOfClass("Humanoid")
-	if not hum then return nil end
-
-	local animator=hum:FindFirstChildOfClass("Animator")
-	if not animator then
-		animator=Instance.new("Animator")
-		animator.Parent=hum
-	end
-
-	local anim=Instance.new("Animation")
-	anim.AnimationId="rbxassetid://17287575667"
-
-	local ok,track=pcall(function()
-		return animator:LoadAnimation(anim)
-	end)
-	anim:Destroy()
-
-	if ok and track then
-		track.Priority=Enum.AnimationPriority.Action
-		blockAnimTrack=track
-	end
-	return blockAnimTrack
-end
+local blockActive=false
 
 local function blockActivate()
-	if blockEnabled then return end
-	blockEnabled=true
+	if blockActive then return end
+	blockActive=true
 
-	blockThread=task.spawn(function()
-		while blockEnabled do
-			local char=player.Character
-			local hum=char and char:FindFirstChildOfClass("Humanoid")
-
-			if hum and hum.Health>0 then
-				pcall(function()
-					if IsolatedBlock then
-						IsolatedBlock:FireServer()
-					end
-				end)
-
-				local track=getBlockTrack()
-				if track and not track.IsPlaying then
-					track:Play(0.1)
-				end
-			end
-
-			task.wait(BLOCK_INTERVAL)
+	task.spawn(function()
+		while blockActive do
+			pcall(function()
+				events.isolatedblock:FireServer()
+			end)
+			task.wait(0.1)
 		end
 	end)
 end
 
 local function blockDeactivate()
-	blockEnabled=false
-	if blockThread then
-		task.cancel(blockThread)
-		blockThread=nil
-	end
-	if blockAnimTrack then
-		pcall(function()
-			blockAnimTrack:Stop(0.15)
-		end)
-	end
+	blockActive=false
 end
+
 
 player.CharacterAdded:Connect(function()
 	if blockAnimTrack then
