@@ -335,41 +335,74 @@ local function pvpOnActivate()
 end
 local function pvpOnDeactivate() if pvpOnThread then task.cancel(pvpOnThread); pvpOnThread=nil end end
 
-local blockThread=nil
-local blockAnimTrack=nil
-local blockEnabled=false
-local BLOCK_INTERVAL=2.5
 local blockActive=false
+local blockThread=nil
+local BLOCK_INTERVAL=1.9
+local BLOCK_RANGE=20
+
+local function canAutoBlock()
+	local char=player.Character
+	if not char then return false end
+
+	local hum=char:FindFirstChildOfClass("Humanoid")
+	local root=char:FindFirstChild("HumanoidRootPart")
+	local state=char:FindFirstChild("Player")
+	if not hum or hum.Health<=0 or not root or not state then return false end
+
+	local key=state:FindFirstChild("KeyChecker")
+	local damages=state:FindFirstChild("Damages")
+	local ragdoll=damages and damages:FindFirstChild("Ragdoll")
+	local pvp=state:FindFirstChild("PvpOn")
+	local disable=pvp and pvp:FindFirstChild("BlockDisableOff")
+
+	if key and key:IsA("BoolValue") and not key.Value then return false end
+	if ragdoll and ragdoll:IsA("BoolValue") and ragdoll.Value then return false end
+	if disable and disable:IsA("BoolValue") and not disable.Value then return false end
+
+	return true,root
+end
+
+local function enemyInBlockRange(root)
+	for _,other in ipairs(Players:GetPlayers()) do
+		if other~=player and other.Character then
+			local char=other.Character
+			local hum=char:FindFirstChildOfClass("Humanoid")
+			local enemyRoot=char:FindFirstChild("HumanoidRootPart")
+			if hum and hum.Health>0 and enemyRoot then
+				if (enemyRoot.Position-root.Position).Magnitude<=BLOCK_RANGE then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
 
 local function blockActivate()
 	if blockActive then return end
 	blockActive=true
-
-	task.spawn(function()
+	blockThread=task.spawn(function()
 		while blockActive do
-			pcall(function()
-				events.isolatedblock:FireServer()
-			end)
-			task.wait(0.1)
+			local ready,root=canAutoBlock()
+			if ready and enemyInBlockRange(root) and IsolatedBlock then
+				pcall(function()
+					IsolatedBlock:FireServer()
+				end)
+				task.wait(BLOCK_INTERVAL)
+			else
+				task.wait(0.1)
+			end
 		end
 	end)
 end
 
 local function blockDeactivate()
 	blockActive=false
-end
-
-
-player.CharacterAdded:Connect(function()
-	if blockAnimTrack then
-		pcall(function()
-			blockAnimTrack:Stop(0)
-			blockAnimTrack:Destroy()
-		end)
+	if blockThread then
+		task.cancel(blockThread)
+		blockThread=nil
 	end
-	blockAnimTrack=nil
-end)
-
+end
 
 local escapeThread = nil
 
