@@ -335,63 +335,20 @@ local function pvpOnActivate()
 end
 local function pvpOnDeactivate() if pvpOnThread then task.cancel(pvpOnThread); pvpOnThread=nil end end
 
-local blockActive=false
 local blockThread=nil
-local BLOCK_INTERVAL=1.9
-local BLOCK_RANGE=20
-
-local function canAutoBlock()
-	local char=player.Character
-	if not char then return false end
-
-	local hum=char:FindFirstChildOfClass("Humanoid")
-	local root=char:FindFirstChild("HumanoidRootPart")
-	local state=char:FindFirstChild("Player")
-	if not hum or hum.Health<=0 or not root or not state then return false end
-
-	local key=state:FindFirstChild("KeyChecker")
-	local damages=state:FindFirstChild("Damages")
-	local ragdoll=damages and damages:FindFirstChild("Ragdoll")
-	local pvp=state:FindFirstChild("PvpOn")
-	local disable=pvp and pvp:FindFirstChild("BlockDisableOff")
-
-	if key and key:IsA("BoolValue") and not key.Value then return false end
-	if ragdoll and ragdoll:IsA("BoolValue") and ragdoll.Value then return false end
-	if disable and disable:IsA("BoolValue") and not disable.Value then return false end
-
-	return true,root
-end
-
-local function enemyInBlockRange(root)
-	for _,other in ipairs(Players:GetPlayers()) do
-		if other~=player and other.Character then
-			local char=other.Character
-			local hum=char:FindFirstChildOfClass("Humanoid")
-			local enemyRoot=char:FindFirstChild("HumanoidRootPart")
-			if hum and hum.Health>0 and enemyRoot then
-				if (enemyRoot.Position-root.Position).Magnitude<=BLOCK_RANGE then
-					return true
-				end
-			end
-		end
-	end
-	return false
-end
+local blockActive=false
 
 local function blockActivate()
 	if blockActive then return end
 	blockActive=true
 	blockThread=task.spawn(function()
 		while blockActive do
-			local ready,root=canAutoBlock()
-			if ready and enemyInBlockRange(root) and IsolatedBlock then
+			if IsolatedBlock then
 				pcall(function()
 					IsolatedBlock:FireServer()
 				end)
-				task.wait(BLOCK_INTERVAL)
-			else
-				task.wait(0.1)
 			end
+			task.wait(0.05)
 		end
 	end)
 end
@@ -404,32 +361,39 @@ local function blockDeactivate()
 	end
 end
 
-local escapeThread = nil
+local escapeThread=nil
+local escapeActive=false
 
 local function escapeActivate()
-	if escapeThread then return end
-	escapeThread = task.spawn(function()
-		while true do
-			pcall(function()
-				local char = player.Character
-				local p = char and char:FindFirstChild("Player")
-				local damages = p and p:FindFirstChild("Damages")
-				local values = damages and damages:FindFirstChild("values")
-				local damageTool = values and values:FindFirstChild("DamageTool")
-				local escaped = damageTool and damageTool:FindFirstChild("Escaped")
-				if escaped and ValueChange then
-					ValueChange:FireServer(escaped, true)
+	if escapeActive then return end
+	escapeActive=true
+	escapeThread=task.spawn(function()
+		while escapeActive do
+			local char=player.Character
+			local data=char and char:FindFirstChild("Player")
+			local damages=data and data:FindFirstChild("Damages")
+			local values=damages and damages:FindFirstChild("values")
+			local tool=values and values:FindFirstChild("DamageTool")
+			local able=tool and tool:FindFirstChild("AbleToEscape")
+			local escaped=tool and tool:FindFirstChild("Escaped")
+
+			if able and escaped and able:IsA("BoolValue") and escaped:IsA("BoolValue") then
+				if able.Value and not escaped.Value and ValueChange then
+					pcall(function()
+						ValueChange:FireServer(escaped,true)
+					end)
 				end
-			end)
-			task.wait(0.05)
+			end
+			task.wait(0.1)
 		end
 	end)
 end
 
 local function escapeDeactivate()
+	escapeActive=false
 	if escapeThread then
 		task.cancel(escapeThread)
-		escapeThread = nil
+		escapeThread=nil
 	end
 end
 
@@ -491,6 +455,14 @@ local function stompDeactivate()
 end
 
 local fEscape = makeFeature("Auto Escape", Enum.KeyCode.Unknown, {onActivate = escapeActivate,onDeactivate = escapeDeactivate})
+local fCombo=makeFeature("Combo Spam",Enum.KeyCode.P,{
+	onActivate=comboActivate,
+	onDeactivate=comboDeactivate
+})
+local fBlock=makeFeature("Auto Block",Enum.KeyCode.Unknown,{
+	onActivate=blockActivate,
+	onDeactivate=blockDeactivate})
+local fStomp = makeFeature("Auto Stomp", Enum.KeyCode.Unknown, {onActivate=stompActivate, onDeactivate=stompDeactivate})
 local fHitbx = makeFeature("Hitbox+", Enum.KeyCode.Unknown, {onActivate=hitboxActivate, onDeactivate=hitboxDeactivate, onRender=hitboxRender})
 local fValue = makeFeature("Value Edit", Enum.KeyCode.Unknown, {onRender=valueRender})
 local fLoose = makeFeature("Block LooseFight", Enum.KeyCode.Unknown, {onActivate=toggleLooseFight, onDeactivate=toggleLooseFight})
@@ -498,17 +470,6 @@ local fBeatDn = makeFeature("Block BeatDown", Enum.KeyCode.Unknown, {onActivate=
 local fDuo = makeFeature("Block Duo Events", Enum.KeyCode.Unknown, {onActivate=toggleDuo, onDeactivate=toggleDuo})
 local fPvp = makeFeature("PVP Off", Enum.KeyCode.Unknown, {onActivate=pvpActivate, onDeactivate=pvpDeactivate})
 local fPvpOn = makeFeature("PVP On", Enum.KeyCode.Unknown, {onActivate=pvpOnActivate, onDeactivate=pvpOnDeactivate})
-local fCombo=makeFeature("Combo Spam",Enum.KeyCode.P,{
-	onActivate=comboActivate,
-	onDeactivate=comboDeactivate
-})
-
-local fBlock=makeFeature("Auto Block",Enum.KeyCode.Unknown,{
-	onActivate=blockActivate,
-	onDeactivate=blockDeactivate
-})
-
-local fStomp = makeFeature("Auto Stomp", Enum.KeyCode.Unknown, {onActivate=stompActivate, onDeactivate=stompDeactivate})
 
 local GUI_W=240; local ROW_H=34; local PAD=6
 local C_BG=Color3.fromRGB(12,12,15)
