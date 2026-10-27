@@ -34,7 +34,6 @@ local Duo            = events:FindFirstChild("DuoPlrEvents")
 local ValueChange2   = events:FindFirstChild("ValueChange2")
 local MoneyGain      = events:FindFirstChild("MoneyGain")
 local NonFightEvents = events:FindFirstChild("NonFightEvents")
-local customweldacc  = NonFightEvents and NonFightEvents:FindFirstChild("customweldacc")
 local CharRemote     = NonFightEvents and NonFightEvents:FindFirstChild("Char")
 local MainKeys       = events:WaitForChild("MainKeys")
 local ValueChange    = events:FindFirstChild("ValueChange")
@@ -42,23 +41,16 @@ local IsolatedBlock  = events:FindFirstChild("isolatedblock")
 local PvpToggle      = events:FindFirstChild("PvpToggle")
 local SneakEvents    = events:FindFirstChild("SneakRequestEvents")
 local SendSneak      = SneakEvents and SneakEvents:FindFirstChild("SendSneakToServer")
-local ToolMoves      = events:WaitForChild("ToolMoves")
 
 local looseFightBlocked  = false
 local beatDownBlocked    = false
 local duoBlocked         = false
-local healing            = false
-local healThread         = nil
 local hitboxOn           = false
 local hitboxPlayerHooked = false
-local brassThread        = nil
 local comboThread        = nil
 local godCharTarget      = ""
 local pvpThread          = nil
 local pvpOnThread        = nil
-local espOn              = false
-local espCache           = {}
-local espPlayerHooked    = false
 local valueText          = "0"
 local lastValueFire      = 0
 local lastHitboxApply    = 0
@@ -235,18 +227,6 @@ local function hitboxRender()
 	lastHitboxApply=now; setHitboxes(true)
 end
 
-local function healActivate()
-	healing=true
-	if healThread then return end
-	healThread=task.spawn(function()
-		while true do
-			if healing then pcall(function() Solo:FireServer("Health") end) end
-			task.wait(1)
-		end
-	end)
-end
-local function healDeactivate() healing=false end
-
 local function valueRender()
 	if not ValueChange2 then return end
 	local now=tick(); if now-lastValueFire<0.1 then return end
@@ -258,14 +238,6 @@ local function valueRender()
 	local label=bb:FindFirstChild("TextLabel")
 	if label then pcall(function() ValueChange2:FireServer(label,valueText) end) end
 end
-
-local function brassActivate()
-	if not customweldacc then return end
-	brassThread=task.spawn(function()
-		while true do pcall(function() customweldacc:FireServer("Rings") end); task.wait(jitter(0.05,0.1)) end
-	end)
-end
-local function brassDeactivate() if brassThread then task.cancel(brassThread); brassThread=nil end end
 
 local function toggleLooseFight() looseFightBlocked=not looseFightBlocked end
 local function toggleBeatDown()   beatDownBlocked=not beatDownBlocked     end
@@ -283,6 +255,71 @@ local function pvpOnActivate()
 	end)
 end
 local function pvpOnDeactivate() if pvpOnThread then task.cancel(pvpOnThread); pvpOnThread=nil end end
+
+local blockThread = nil
+local blockAnimTrack = nil
+
+local function getBlockTrack()
+	if blockAnimTrack then
+		local ok = pcall(function()
+			return blockAnimTrack.IsPlaying
+		end)
+		if not ok then blockAnimTrack = nil end
+	end
+	if blockAnimTrack then return blockAnimTrack end
+
+	local char = player.Character
+	if not char then return nil end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum then return nil end
+
+	local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
+	local ok, track = pcall(function()
+		local anim = Instance.new("Animation")
+		anim.AnimationId = "rbxassetid://17287575667"
+		local result = animator:LoadAnimation(anim)
+		anim:Destroy()
+		return result
+	end)
+
+	if ok then blockAnimTrack = track end
+	return blockAnimTrack
+end
+
+player.CharacterAdded:Connect(function()
+	blockAnimTrack = nil
+end)
+
+local function blockActivate()
+	if blockThread then return end
+	blockThread = task.spawn(function()
+		while true do
+			pcall(function()
+				if IsolatedBlock then
+					IsolatedBlock:FireServer()
+				end
+			end)
+			pcall(function()
+				local track = getBlockTrack()
+				if track then track:Play() end
+			end)
+			task.wait(2.5)
+		end
+	end)
+end
+
+local function blockDeactivate()
+	if blockThread then
+		task.cancel(blockThread)
+		blockThread = nil
+	end
+	if blockAnimTrack then
+		pcall(function()
+			blockAnimTrack:Stop(0.1)
+		end)
+	end
+end
+
 
 local function nearestEnemy(range)
 	local char=player.Character
@@ -342,175 +379,17 @@ local function stompDeactivate()
 	if stompThread then task.cancel(stompThread); stompThread = nil end
 end
 
-local ESP_TAG="KEN_ESP"
-local function getEspColor(other)
-	local char=other.Character; if char then
-		local hum=char:FindFirstChildOfClass("Humanoid"); if hum then
-			local pct=hum.Health/math.max(hum.MaxHealth,1)
-			if pct<0.4 then return Color3.fromRGB(255,80,80)
-			elseif pct<0.7 then return Color3.fromRGB(255,200,60) end
-		end
-	end; return Color3.new(1,1,1)
-end
-local function buildEspBB(other)
-	local char=other.Character; if not char then return end
-	local root=char:FindFirstChild("HumanoidRootPart") or getTorso(char); if not root then return end
-	if espCache[other] then pcall(function() espCache[other]:Destroy() end) end
-	local bb=Instance.new("BillboardGui")
-	bb.Name=ESP_TAG; bb.Size=UDim2.new(0,120,0,40); bb.StudsOffset=Vector3.new(0,3.2,0)
-	bb.AlwaysOnTop=true; bb.MaxDistance=900; bb.ResetOnSpawn=false; bb.Adornee=root; bb.Parent=root
-	local nl=Instance.new("TextLabel"); nl.Size=UDim2.new(1,0,0.6,0); nl.BackgroundTransparency=1
-	nl.Text=other.DisplayName; nl.TextColor3=Color3.new(1,1,1); nl.TextSize=14; nl.Font=Enum.Font.GothamBold
-	nl.TextStrokeTransparency=0.4; nl.TextXAlignment=Enum.TextXAlignment.Center; nl.Parent=bb
-	local dl=Instance.new("TextLabel"); dl.Size=UDim2.new(1,0,0.4,0); dl.Position=UDim2.new(0,0,0.6,0)
-	dl.BackgroundTransparency=1; dl.TextColor3=Color3.fromRGB(180,180,180); dl.TextSize=10
-	dl.Font=Enum.Font.Gotham; dl.TextXAlignment=Enum.TextXAlignment.Center; dl.Parent=bb
-	espCache[other]=bb
-	task.spawn(function()
-		while espOn and espCache[other]==bb do
-			local mc=player.Character; local mr=mc and(mc:FindFirstChild("HumanoidRootPart") or getTorso(mc))
-			if mr and root and root.Parent then
-				dl.Text=math.floor((mr.Position-root.Position).Magnitude).." studs"
-				nl.TextColor3=getEspColor(other)
-			end; task.wait(0.1)
-		end
-	end)
-end
-local function removeEspBB(other)
-	if espCache[other] then pcall(function() espCache[other]:Destroy() end); espCache[other]=nil end
-end
-local function espActivate()
-	espOn=true
-	for _,other in ipairs(Players:GetPlayers()) do
-		if other~=player then
-			buildEspBB(other)
-			other.CharacterAdded:Connect(function() task.wait(0.2); if espOn then buildEspBB(other) end end)
-		end
-	end
-	if not espPlayerHooked then
-		espPlayerHooked=true
-		Players.PlayerAdded:Connect(function(other)
-			if not espOn then return end; task.wait(0.2); buildEspBB(other)
-			other.CharacterAdded:Connect(function() task.wait(0.2); if espOn then buildEspBB(other) end end)
-		end)
-	end
-end
-local function espDeactivate() espOn=false; for o in pairs(espCache) do removeEspBB(o) end end
-Players.PlayerRemoving:Connect(removeEspBB)
+local fBlock = makeFeature("Auto Block", Enum.KeyCode.Unknown, {onActivate=blockActivate, onDeactivate=blockDeactivate})
+local fHitbx = makeFeature("Hitbox+", Enum.KeyCode.Unknown, {onActivate=hitboxActivate, onDeactivate=hitboxDeactivate, onRender=hitboxRender})
+local fValue = makeFeature("Value Edit", Enum.KeyCode.Unknown, {onRender=valueRender})
+local fLoose = makeFeature("Block LooseFight", Enum.KeyCode.Unknown, {onActivate=toggleLooseFight, onDeactivate=toggleLooseFight})
+local fBeatDn = makeFeature("Block BeatDown", Enum.KeyCode.Unknown, {onActivate=toggleBeatDown, onDeactivate=toggleBeatDown})
+local fDuo = makeFeature("Block Duo Events", Enum.KeyCode.Unknown, {onActivate=toggleDuo, onDeactivate=toggleDuo})
+local fPvp = makeFeature("PVP Off", Enum.KeyCode.Unknown, {onActivate=pvpActivate, onDeactivate=pvpDeactivate})
+local fPvpOn = makeFeature("PVP On", Enum.KeyCode.Unknown, {onActivate=pvpOnActivate, onDeactivate=pvpOnDeactivate})
+local fCombo = makeFeature("Combo Spam", Enum.KeyCode.P, {onActivate=comboActivate, onDeactivate=comboDeactivate})
+local fStomp = makeFeature("Auto Stomp", Enum.KeyCode.Unknown, {onActivate=stompActivate, onDeactivate=stompDeactivate})
 
-local ANIMS = {
-	"rbxassetid://18973213030",
-	"rbxassetid://15343545677",
-	"rbxassetid://138860106098598",
-	"rbxassetid://100515456856542",
-}
-
-local TIMING = {
-	[ANIMS[1]] = 0.4,
-	[ANIMS[2]] = 0.25,
-	[ANIMS[3]] = 0.3,
-	[ANIMS[4]] = 0.3,
-}
-
-local cupRunning = false
-local cupThread = nil
-local loadedTracks = {}
-
-local function getAnimator()
-	local char = player.Character
-	if not char then return nil end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if not hum then return nil end
-	return hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
-end
-
-local function getTrack(id)
-	if loadedTracks[id] then return loadedTracks[id] end
-	local anim = getAnimator()
-	if not anim then return nil end
-	local ok, track = pcall(function()
-		local a = Instance.new("Animation")
-		a.AnimationId = id
-		local t = anim:LoadAnimation(a)
-		a:Destroy()
-		return t
-	end)
-	if ok then loadedTracks[id] = track; return track end
-	return nil
-end
-
-local function playAnim(id)
-	local track = getTrack(id)
-	if not track then return end
-	pcall(function()
-		if track.IsPlaying then track:Stop(0) end
-		track:Play(0.1, 1, 1.2)
-	end)
-	task.wait(TIMING[id] or 0.3)
-end
-
-player.CharacterAdded:Connect(function()
-	loadedTracks = {}
-end)
-
-local function preloadAnims()
-	task.wait(1)
-	for _, id in ipairs(ANIMS) do
-		pcall(function() getTrack(id) end)
-		task.wait(0.05)
-	end
-end
-if player.Character then preloadAnims()
-else player.CharacterAdded:Connect(function() preloadAnims() end) end
-
-local function startCup()
-	if cupRunning then return end
-	cupRunning = true
-	cupThread = task.spawn(function()
-		while cupRunning do
-			pcall(function() ToolMoves:FireServer() end)
-			playAnim(ANIMS[1])
-			if not cupRunning then break end
-			for i = 1, 3 do
-				if not cupRunning then break end
-				pcall(function() ToolMoves:FireServer() end)
-				playAnim(ANIMS[2])
-			end
-			if not cupRunning then break end
-			playAnim(ANIMS[3])
-			if not cupRunning then break end
-			playAnim(ANIMS[4])
-			task.wait(0.1)
-		end
-	end)
-end
-
-local function stopCup()
-	cupRunning = false
-	if cupThread then task.cancel(cupThread); cupThread = nil end
-	for _, track in pairs(loadedTracks) do
-		pcall(function() if track.IsPlaying then track:Stop(0.1) end end)
-	end
-end
-
----------------------------------------------------------------------
--- PINK COLOR SCHEME + RENAMED TO "🌸 Blossom private one of one 🌸"
----------------------------------------------------------------------
-local fHeal   = makeFeature("Heal Boost",       Enum.KeyCode.LeftBracket, {onActivate=healActivate,          onDeactivate=healDeactivate})
-local fHitbx  = makeFeature("Hitbox+",          Enum.KeyCode.Unknown,     {onActivate=hitboxActivate,        onDeactivate=hitboxDeactivate, onRender=hitboxRender})
-local fValue  = makeFeature("Value Edit",       Enum.KeyCode.Unknown,     {onRender=valueRender})
-local fBrass  = makeFeature("Brass Knuckles",   Enum.KeyCode.Unknown,     {onActivate=brassActivate,         onDeactivate=brassDeactivate})
-local fLoose  = makeFeature("Block LooseFight", Enum.KeyCode.Unknown,     {onActivate=toggleLooseFight,      onDeactivate=toggleLooseFight})
-local fBeatDn = makeFeature("Block BeatDown",   Enum.KeyCode.Unknown,     {onActivate=toggleBeatDown,        onDeactivate=toggleBeatDown})
-local fDuo    = makeFeature("Block Duo Events", Enum.KeyCode.Unknown,     {onActivate=toggleDuo,             onDeactivate=toggleDuo})
-local fPvp    = makeFeature("PVP Off",          Enum.KeyCode.Unknown,     {onActivate=pvpActivate,           onDeactivate=pvpDeactivate})
-local fPvpOn  = makeFeature("PVP On",           Enum.KeyCode.Unknown,     {onActivate=pvpOnActivate,         onDeactivate=pvpOnDeactivate})
-local fCombo  = makeFeature("Combo Spam",       Enum.KeyCode.P,           {onActivate=comboActivate,         onDeactivate=comboDeactivate})
-local fStomp  = makeFeature("Auto Stomp",       Enum.KeyCode.Unknown,     {onActivate=stompActivate,         onDeactivate=stompDeactivate})
-local fCup    = makeFeature("Auto Metal Cup",   Enum.KeyCode.F,           {onActivate=startCup,              onDeactivate=stopCup})
-local fEsp    = makeFeature("Name ESP",         Enum.KeyCode.Unknown,     {onActivate=espActivate,           onDeactivate=espDeactivate})
-
--- PINK COLOR CONSTANTS
 local GUI_W=260; local ROW_H=38; local PAD=8
 local C_BG=Color3.fromRGB(26,10,18)
 local C_TITLE=Color3.fromRGB(55,12,32)
