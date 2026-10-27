@@ -417,27 +417,21 @@ local function nearestEnemy(range)
 end
 
 local COMBO_ACTIONS={"Push","Punch","Drag","DamageTool"}
-
 local function comboActivate()
-	if comboThread then return end
 	comboThread=task.spawn(function()
 		while true do
 			if nearestEnemy(32) then
 				pcall(function()
-					local char=player.Character
-					local p=char and char:FindFirstChild("Player")
-					local dam=p and p:FindFirstChild("Damages")
+					local char=player.Character; if not char then return end
+					local p2=char:FindFirstChild("Player")
+					local dam=p2 and p2:FindFirstChild("Damages")
 					local vals=dam and dam:FindFirstChild("values")
 					local dt=vals and vals:FindFirstChild("DamageTool")
 					local esc=dt and dt:FindFirstChild("Escaped")
-					if esc and ValueChange then
-						ValueChange:FireServer(esc,true)
-					end
+					if esc and ValueChange then ValueChange:FireServer(esc,true) end
 				end)
-				for _,action in ipairs(COMBO_ACTIONS) do
-					pcall(function()
-						MainKeys:FireServer(action)
-					end)
+				for _,a in ipairs(COMBO_ACTIONS) do
+					pcall(function() MainKeys:FireServer(a) end)
 					task.wait(0.05)
 				end
 			end
@@ -445,12 +439,8 @@ local function comboActivate()
 		end
 	end)
 end
-
 local function comboDeactivate()
-	if comboThread then
-		task.cancel(comboThread)
-		comboThread=nil
-	end
+	if comboThread then task.cancel(comboThread); comboThread=nil end
 end
 
 local stompThread = nil
