@@ -261,69 +261,88 @@ local function pvpOnActivate()
 end
 local function pvpOnDeactivate() if pvpOnThread then task.cancel(pvpOnThread); pvpOnThread=nil end end
 
-local blockThread = nil
-local blockAnimTrack = nil
+local blockThread=nil
+local blockAnimTrack=nil
+local blockEnabled=false
+local BLOCK_INTERVAL=2.5
 
 local function getBlockTrack()
-	if blockAnimTrack then
-		local ok = pcall(function()
-			return blockAnimTrack.IsPlaying
-		end)
-		if not ok then blockAnimTrack = nil end
-	end
 	if blockAnimTrack then return blockAnimTrack end
-
-	local char = player.Character
-	if not char then return nil end
-	local hum = char:FindFirstChildOfClass("Humanoid")
+	local char=player.Character
+	local hum=char and char:FindFirstChildOfClass("Humanoid")
 	if not hum then return nil end
 
-	local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
-	local ok, track = pcall(function()
-		local anim = Instance.new("Animation")
-		anim.AnimationId = "rbxassetid://17287575667"
-		local result = animator:LoadAnimation(anim)
-		anim:Destroy()
-		return result
-	end)
+	local animator=hum:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator=Instance.new("Animator")
+		animator.Parent=hum
+	end
 
-	if ok then blockAnimTrack = track end
+	local anim=Instance.new("Animation")
+	anim.AnimationId="rbxassetid://17287575667"
+
+	local ok,track=pcall(function()
+		return animator:LoadAnimation(anim)
+	end)
+	anim:Destroy()
+
+	if ok and track then
+		track.Priority=Enum.AnimationPriority.Action
+		blockAnimTrack=track
+	end
 	return blockAnimTrack
 end
 
-player.CharacterAdded:Connect(function()
-	blockAnimTrack = nil
-end)
-
 local function blockActivate()
-	if blockThread then return end
-	blockThread = task.spawn(function()
-		while true do
-			pcall(function()
-				if IsolatedBlock then
-					IsolatedBlock:FireServer()
+	if blockEnabled then return end
+	blockEnabled=true
+
+	blockThread=task.spawn(function()
+		while blockEnabled do
+			local char=player.Character
+			local hum=char and char:FindFirstChildOfClass("Humanoid")
+
+			if hum and hum.Health>0 then
+				pcall(function()
+					if IsolatedBlock then
+						IsolatedBlock:FireServer()
+					end
+				end)
+
+				local track=getBlockTrack()
+				if track and not track.IsPlaying then
+					track:Play(0.1)
 				end
-			end)
-			pcall(function()
-				local track = getBlockTrack()
-				if track then track:Play() end
-			end)
-			task.wait(2.5)
+			end
+
+			task.wait(BLOCK_INTERVAL)
 		end
 	end)
 end
 
 local function blockDeactivate()
+	blockEnabled=false
 	if blockThread then
 		task.cancel(blockThread)
-		blockThread = nil
+		blockThread=nil
 	end
 	if blockAnimTrack then
 		pcall(function()
-			blockAnimTrack:Stop(0.1)
+			blockAnimTrack:Stop(0.15)
 		end)
 	end
 end
+
+player.CharacterAdded:Connect(function()
+	if blockAnimTrack then
+		pcall(function()
+			blockAnimTrack:Stop(0)
+			blockAnimTrack:Destroy()
+		end)
+	end
+	blockAnimTrack=nil
+end)
+
 
 local escapeThread = nil
 
@@ -374,23 +393,46 @@ local function nearestEnemy(range)
 end
 
 local COMBO_ACTIONS={"Push","Punch","Drag","DamageTool"}
+local COMBO_INTERVAL=0.12
+local lastComboAction=nil
 local function comboActivate()
 	if comboThread then return end
-	comboThread = task.spawn(function()
+	comboThread=task.spawn(function()
 		while true do
 			if nearestEnemy(32) then
-				local action = COMBO_ACTIONS[math.random(1, #COMBO_ACTIONS)]
+				local available={}
+				for _,action in ipairs(COMBO_ACTIONS) do
+					if action~=lastComboAction then
+						table.insert(available,action)
+					end
+				end
+
+				local action=available[math.random(1,#available)]
+				lastComboAction=action
+
 				pcall(function()
 					MainKeys:FireServer(action)
 				end)
+
+				if action=="Push" then
+					task.wait(0.08)
+					pcall(function()
+						MainKeys:FireServer("Stomp")
+					end)
+				end
 			end
-			task.wait(jitter(0.06, 0.25))
+			task.wait(COMBO_INTERVAL)
 		end
 	end)
 end
 
+
 local function comboDeactivate()
-	if comboThread then task.cancel(comboThread); comboThread=nil end
+	if comboThread then
+		task.cancel(comboThread)
+		comboThread=nil
+	end
+	lastComboAction=nil
 end
 
 local stompThread = nil
