@@ -320,6 +320,34 @@ local function blockDeactivate()
 	end
 end
 
+local escapeThread = nil
+
+local function escapeActivate()
+	if escapeThread then return end
+	escapeThread = task.spawn(function()
+		while true do
+			pcall(function()
+				local char = player.Character
+				local p = char and char:FindFirstChild("Player")
+				local damages = p and p:FindFirstChild("Damages")
+				local values = damages and damages:FindFirstChild("values")
+				local damageTool = values and values:FindFirstChild("DamageTool")
+				local escaped = damageTool and damageTool:FindFirstChild("Escaped")
+				if escaped and ValueChange then
+					ValueChange:FireServer(escaped, true)
+				end
+			end)
+			task.wait(0.05)
+		end
+	end)
+end
+
+local function escapeDeactivate()
+	if escapeThread then
+		task.cancel(escapeThread)
+		escapeThread = nil
+	end
+end
 
 local function nearestEnemy(range)
 	local char=player.Character
@@ -339,29 +367,23 @@ local function nearestEnemy(range)
 	end
 	return best
 end
+
 local COMBO_ACTIONS={"Push","Punch","Drag","DamageTool"}
 local function comboActivate()
-	comboThread=task.spawn(function()
+	if comboThread then return end
+	comboThread = task.spawn(function()
 		while true do
 			if nearestEnemy(32) then
+				local action = COMBO_ACTIONS[math.random(1, #COMBO_ACTIONS)]
 				pcall(function()
-					local char=player.Character; if not char then return end
-					local p2=char:FindFirstChild("Player")
-					local dam=p2 and p2:FindFirstChild("Damages")
-					local vals=dam and dam:FindFirstChild("values")
-					local dt=vals and vals:FindFirstChild("DamageTool")
-					local esc=dt and dt:FindFirstChild("Escaped")
-					if esc and ValueChange then ValueChange:FireServer(esc,true) end
+					MainKeys:FireServer(action)
 				end)
-				for _,a in ipairs(COMBO_ACTIONS) do
-					pcall(function() MainKeys:FireServer(a) end)
-					task.wait(0.05)
-				end
 			end
-			task.wait(jitter(0.06,0.25))
+			task.wait(jitter(0.06, 0.25))
 		end
 	end)
 end
+
 local function comboDeactivate()
 	if comboThread then task.cancel(comboThread); comboThread=nil end
 end
@@ -380,6 +402,7 @@ local function stompDeactivate()
 end
 
 local fBlock = makeFeature("Auto Block", Enum.KeyCode.Unknown, {onActivate=blockActivate, onDeactivate=blockDeactivate})
+local fEscape = makeFeature("Auto Escape", Enum.KeyCode.Unknown, {onActivate = escapeActivate,onDeactivate = escapeDeactivate})
 local fHitbx = makeFeature("Hitbox+", Enum.KeyCode.Unknown, {onActivate=hitboxActivate, onDeactivate=hitboxDeactivate, onRender=hitboxRender})
 local fValue = makeFeature("Value Edit", Enum.KeyCode.Unknown, {onRender=valueRender})
 local fLoose = makeFeature("Block LooseFight", Enum.KeyCode.Unknown, {onActivate=toggleLooseFight, onDeactivate=toggleLooseFight})
@@ -390,23 +413,24 @@ local fPvpOn = makeFeature("PVP On", Enum.KeyCode.Unknown, {onActivate=pvpOnActi
 local fCombo = makeFeature("Combo Spam", Enum.KeyCode.P, {onActivate=comboActivate, onDeactivate=comboDeactivate})
 local fStomp = makeFeature("Auto Stomp", Enum.KeyCode.Unknown, {onActivate=stompActivate, onDeactivate=stompDeactivate})
 
-local GUI_W=260; local ROW_H=38; local PAD=8
-local C_BG=Color3.fromRGB(26,10,18)
-local C_TITLE=Color3.fromRGB(55,12,32)
-local C_ON=Color3.fromRGB(255,60,160)
-local C_OFF=Color3.fromRGB(140,40,100)
-local C_KEY=Color3.fromRGB(255,100,190)
-local C_KEY_HLD=Color3.fromRGB(255,180,220)
-local C_LABEL=Color3.fromRGB(255,220,235)
-local C_DIM=Color3.fromRGB(200,120,160)
-local C_HOVER=Color3.fromRGB(80,20,50)
-local C_INPUT=Color3.fromRGB(50,14,28)
-local C_SEP=Color3.fromRGB(160,50,110)
+local GUI_W=240; local ROW_H=34; local PAD=6
+local C_BG=Color3.fromRGB(12,12,15)
+local C_TITLE=Color3.fromRGB(25,25,30)
+local C_ON=Color3.fromRGB(225,230,240)
+local C_OFF=Color3.fromRGB(105,110,120)
+local C_KEY=Color3.fromRGB(185,190,205)
+local C_KEY_HLD=Color3.fromRGB(245,245,250)
+local C_LABEL=Color3.fromRGB(235,237,242)
+local C_DIM=Color3.fromRGB(145,150,160)
+local C_HOVER=Color3.fromRGB(48,50,58)
+local C_INPUT=Color3.fromRGB(28,29,35)
+local C_SEP=Color3.fromRGB(100,105,115)
 local TW_DOT=TweenInfo.new(0.3,Enum.EasingStyle.Exponential,Enum.EasingDirection.Out)
 local TW_ROW=TweenInfo.new(0.22,Enum.EasingStyle.Exponential,Enum.EasingDirection.Out)
 local TW_FAST=TweenInfo.new(0.15,Enum.EasingStyle.Sine,Enum.EasingDirection.Out)
 local TW_OPEN=TweenInfo.new(0.45,Enum.EasingStyle.Exponential,Enum.EasingDirection.Out)
 local TW_SPRING=TweenInfo.new(0.5,Enum.EasingStyle.Elastic,Enum.EasingDirection.Out)
+
 
 local sg=Instance.new("ScreenGui")
 sg.Name="BLOSSOM_PRIVATE"; sg.ResetOnSpawn=false; sg.IgnoreGuiInset=true
@@ -418,30 +442,34 @@ local infoLabelRef=nil
 local function buildMobileUI()
 	local mSg=Instance.new("ScreenGui"); mSg.Name="BLOSSOM_MOBILE"; mSg.ResetOnSpawn=false
 	mSg.IgnoreGuiInset=true; mSg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; mSg.Parent=playerGui
-
-	local ToggleButton = Instance.new("TextButton")
-	ToggleButton.Name = "BlossomToggle"
-	ToggleButton.Size = UDim2.fromOffset(48, 48)
-	ToggleButton.Position = UDim2.new(1, -60, 0.5, -24)
-	ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 35, 100)
-	ToggleButton.Text = "🌸"
-	ToggleButton.TextSize = 24
-	ToggleButton.TextColor3 = Color3.new(1, 1, 1)
-	ToggleButton.Font = Enum.Font.GothamBold
-	ToggleButton.ZIndex = 10
-	ToggleButton.Parent = mSg
-
-	Instance.new("UICorner", ToggleButton).CornerRadius = UDim.new(1, 0)
-
-	local ToggleStroke = Instance.new("UIStroke")
-	ToggleStroke.Color = Color3.fromRGB(255, 120, 190)
-	ToggleStroke.Thickness = 2
-	ToggleStroke.Parent = ToggleButton
 	
-	
-	local mP=Instance.new("Frame"); mP.Size=UDim2.new(0,300,0.85,0); mP.Position=UDim2.new(0,8,0.075,0)
-	mP.BackgroundColor3=C_BG; mP.BorderSizePixel=0; mP.Active=true; mP.Parent=mSg
-	
+	local ToggleButton=Instance.new("TextButton")
+	ToggleButton.Name="LoriBandzzToggle"
+	ToggleButton.Size=UDim2.fromOffset(34,34)
+	ToggleButton.Position=UDim2.new(1,-44,0.5,-17)
+	ToggleButton.BackgroundColor3=Color3.fromRGB(20,20,24)
+	ToggleButton.BorderSizePixel=0
+	ToggleButton.Text="⚡"
+	ToggleButton.TextSize=18
+	ToggleButton.TextColor3=Color3.fromRGB(235,238,245)
+	ToggleButton.Font=Enum.Font.GothamBold
+	ToggleButton.ZIndex=10
+	ToggleButton.Parent=mSg
+
+	Instance.new("UICorner",ToggleButton).CornerRadius=UDim.new(0,10)
+
+	local ToggleStroke=Instance.new("UIStroke")
+	ToggleStroke.Color=Color3.fromRGB(175,180,195)
+	ToggleStroke.Thickness=1.2
+	ToggleStroke.Parent=ToggleButton
+
+	local mP=Instance.new("Frame")
+	mP.Size=UDim2.new(0,245,0.7,0)
+	mP.Position=UDim2.new(0,8,0.15,0)
+	mP.BackgroundColor3=C_BG
+	mP.BorderSizePixel=0
+	mP.Active=true
+	mP.Parent=mSg
 
 	ToggleButton.MouseButton1Click:Connect(function()
 		mP.Visible = not mP.Visible
@@ -479,14 +507,14 @@ local function buildMobileUI()
 	
 	
 	Instance.new("UICorner",mP).CornerRadius=UDim.new(0,14)
-	Instance.new("UIStroke",mP).Color=Color3.fromRGB(180,40,100)
-
+	Instance.new("UIStroke",mP).Color=Color3.fromRGB(145,150,165)
+	
 	local mH=Instance.new("Frame"); mH.Size=UDim2.new(1,0,0,44); mH.BackgroundColor3=C_TITLE
 	mH.BorderSizePixel=0; mH.Parent=mP; Instance.new("UICorner",mH).CornerRadius=UDim.new(0,14)
 	local mHF=Instance.new("Frame"); mHF.Size=UDim2.new(1,0,0,14); mHF.Position=UDim2.new(0,0,1,-14)
 	mHF.BackgroundColor3=C_TITLE; mHF.BorderSizePixel=0; mHF.Parent=mH
 	local mT=Instance.new("TextLabel"); mT.Size=UDim2.new(1,-60,1,0); mT.Position=UDim2.new(0,10,0,0)
-	mT.BackgroundTransparency=1; mT.Text="🌸 Blossom private one of one 🌸"; mT.TextColor3=C_LABEL; mT.TextSize=13
+	mT.BackgroundTransparency=1; mT.Text="LoriBandzz Private ⚡️"; mT.TextColor3=C_LABEL; mT.TextSize=13
 	mT.Font=Enum.Font.GothamBold; mT.TextXAlignment=Enum.TextXAlignment.Left; mT.Parent=mH
 	local mHB=Instance.new("TextButton"); mHB.Size=UDim2.new(0,36,0,36); mHB.Position=UDim2.new(1,-42,0.5,-18)
 	mHB.BackgroundColor3=Color3.fromRGB(120,30,70); mHB.BorderSizePixel=0; mHB.Text="—"
@@ -498,7 +526,7 @@ local function buildMobileUI()
 		mMin=not mMin
 		if mMin then
 			mScroll.Visible=false
-			TweenService:Create(mP,TweenInfo.new(0.25,Enum.EasingStyle.Cubic,Enum.EasingDirection.Out),{Size=UDim2.new(0,300,0,44)}):Play()
+			TweenService:Create(mP,TweenInfo.new(0.25,Enum.EasingStyle.Cubic,Enum.EasingDirection.Out),{Size=UDim2.new(0,245,0.7,0)}):Play()
 			mHB.Text="+"
 		else
 			mScroll.Visible=true
@@ -517,20 +545,20 @@ local function buildMobileUI()
 	local mOrder=0
 	local function mToggle(feat)
 		mOrder=mOrder+1
-		local row=Instance.new("Frame"); row.Size=UDim2.new(1,-8,0,52)
-		row.BackgroundColor3=Color3.fromRGB(56,16,34); row.BorderSizePixel=0; row.LayoutOrder=mOrder; row.Parent=mScroll
+		local row=Instance.new("Frame"); row.Size=UDim2.new(1,-8,0,42)
+		row.BackgroundColor3=Color3.fromRGB(32,33,39); row.BorderSizePixel=0; row.LayoutOrder=mOrder; row.Parent=mScroll
 		Instance.new("UICorner",row).CornerRadius=UDim.new(0,10)
 		local d=Instance.new("Frame"); d.Size=UDim2.new(0,10,0,10); d.Position=UDim2.new(0,12,0.5,-5)
 		d.BackgroundColor3=C_OFF; d.BorderSizePixel=0; d.Parent=row; Instance.new("UICorner",d).CornerRadius=UDim.new(1,0)
 		local l=Instance.new("TextLabel"); l.Size=UDim2.new(0.65,0,1,0); l.Position=UDim2.new(0,30,0,0)
-		l.BackgroundTransparency=1; l.Text=feat.name; l.TextColor3=C_DIM; l.TextSize=14
+		l.BackgroundTransparency=1; l.Text=feat.name; l.TextColor3=C_DIM; l.TextSize=12
 		l.Font=Enum.Font.GothamBold; l.TextXAlignment=Enum.TextXAlignment.Left; l.Parent=row
-		local tb=Instance.new("TextButton"); tb.Size=UDim2.new(0,70,0,36); tb.Position=UDim2.new(1,-78,0.5,-18)
+		local tb=Instance.new("TextButton");tb.Size=UDim2.new(0,54,0,28);tb.Position=UDim2.new(1,-62,0.5,-14)
 		tb.BackgroundColor3=Color3.fromRGB(110,25,60); tb.BorderSizePixel=0; tb.Text="OFF"; tb.TextColor3=C_OFF
 		tb.TextSize=13; tb.Font=Enum.Font.GothamBold; tb.Parent=row; Instance.new("UICorner",tb).CornerRadius=UDim.new(0,8)
 		local function upd()
 			TweenService:Create(d,TW_DOT,{BackgroundColor3=feat.state and C_ON or C_OFF}):Play()
-			TweenService:Create(tb,TW_ROW,{BackgroundColor3=feat.state and Color3.fromRGB(160,30,90) or Color3.fromRGB(110,25,60)}):Play()
+			TweenService:Create(tb,TW_ROW,{BackgroundColor3=feat.state and Color3.fromRGB(75,80,92) or Color3.fromRGB(110,25,60)}):Play()
 			tb.Text=feat.state and "ON" or "OFF"; tb.TextColor3=feat.state and C_ON or C_OFF
 			l.TextColor3=feat.state and C_LABEL or C_DIM
 		end
@@ -546,8 +574,8 @@ local function buildMobileUI()
 
 	local function mInput(ph,btnT,btnC,cb)
 		mOrder=mOrder+1
-		local row=Instance.new("Frame"); row.Size=UDim2.new(1,-8,0,52)
-		row.BackgroundColor3=Color3.fromRGB(56,16,34); row.BorderSizePixel=0; row.LayoutOrder=mOrder; row.Parent=mScroll
+		local row=Instance.new("Frame"); row.Size=UDim2.new(1,-8,0,44)
+		row.BackgroundColor3=Color3.fromRGB(32,33,39); row.BorderSizePixel=0; row.LayoutOrder=mOrder; row.Parent=mScroll
 		Instance.new("UICorner",row).CornerRadius=UDim.new(0,10)
 		local box=Instance.new("TextBox"); box.Size=UDim2.new(0.52,-6,0,38); box.Position=UDim2.new(0,6,0.5,-19)
 		box.BackgroundColor3=Color3.fromRGB(44,12,24); box.BorderSizePixel=0; box.Text=""
