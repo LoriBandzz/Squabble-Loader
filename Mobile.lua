@@ -453,40 +453,19 @@ local function nearestEnemy(range)
 end
 
 local COMBO_ACTIONS={"Push","Punch","Drag","DamageTool"}
-local COMBO_INTERVAL=0.12
-local lastComboAction=nil
-
-local function fireComboAction(action)
-	local ok=pcall(function()
-		MainKeys:FireServer(action)
-	end)
-
-	if action=="Push" and ok then
-		task.wait(0.08)
-
-		local stompOk=pcall(function()
-			MainKeys:FireServer("Stomp")
-		end)
-	end
-end
-
 local function comboActivate()
 	if comboThread then return end
 	comboThread=task.spawn(function()
 		while true do
 			if nearestEnemy(32) then
-				local available={}
 				for _,action in ipairs(COMBO_ACTIONS) do
-					if action~=lastComboAction then
-						table.insert(available,action)
-					end
+					pcall(function()
+						MainKeys:FireServer(action)
+					end)
+					task.wait(0.05)
 				end
-
-				local action=available[math.random(1,#available)]
-				lastComboAction=action
-				fireComboAction(action)
 			end
-			task.wait(COMBO_INTERVAL)
+			task.wait(0.06)
 		end
 	end)
 end
@@ -496,7 +475,6 @@ local function comboDeactivate()
 		task.cancel(comboThread)
 		comboThread=nil
 	end
-	lastComboAction=nil
 end
 
 local stompThread = nil
@@ -521,15 +499,15 @@ local fDuo = makeFeature("Block Duo Events", Enum.KeyCode.Unknown, {onActivate=t
 local fPvp = makeFeature("PVP Off", Enum.KeyCode.Unknown, {onActivate=pvpActivate, onDeactivate=pvpDeactivate})
 local fPvpOn = makeFeature("PVP On", Enum.KeyCode.Unknown, {onActivate=pvpOnActivate, onDeactivate=pvpOnDeactivate})
 local fCombo=makeFeature("Combo Spam",Enum.KeyCode.P,{
-	onActivate=function()
-		comboActivate()
-		blockActivate()
-	end,
-	onDeactivate=function()
-		comboDeactivate()
-		blockDeactivate()
-	end
+	onActivate=comboActivate,
+	onDeactivate=comboDeactivate
 })
+
+local fBlock=makeFeature("Auto Block",Enum.KeyCode.Unknown,{
+	onActivate=blockActivate,
+	onDeactivate=blockDeactivate
+})
+
 local fStomp = makeFeature("Auto Stomp", Enum.KeyCode.Unknown, {onActivate=stompActivate, onDeactivate=stompDeactivate})
 
 local GUI_W=240; local ROW_H=34; local PAD=6
