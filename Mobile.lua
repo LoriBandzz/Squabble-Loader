@@ -335,32 +335,6 @@ local function pvpOnActivate()
 end
 local function pvpOnDeactivate() if pvpOnThread then task.cancel(pvpOnThread); pvpOnThread=nil end end
 
-local blockThread=nil
-local blockActive=false
-
-local function blockActivate()
-	if blockActive then return end
-	blockActive=true
-	blockThread=task.spawn(function()
-		while blockActive do
-			if IsolatedBlock then
-				pcall(function()
-					IsolatedBlock:FireServer()
-				end)
-			end
-			task.wait(0.05)
-		end
-	end)
-end
-
-local function blockDeactivate()
-	blockActive=false
-	if blockThread then
-		task.cancel(blockThread)
-		blockThread=nil
-	end
-end
-
 local escapeThread=nil
 local escapeActive=false
 
@@ -417,21 +391,29 @@ local function nearestEnemy(range)
 end
 
 local COMBO_ACTIONS={"Push","Punch","Drag","DamageTool"}
+
 local function comboActivate()
+	if comboThread then return end
 	comboThread=task.spawn(function()
 		while true do
 			if nearestEnemy(32) then
-				pcall(function()
-					local char=player.Character; if not char then return end
-					local p2=char:FindFirstChild("Player")
-					local dam=p2 and p2:FindFirstChild("Damages")
-					local vals=dam and dam:FindFirstChild("values")
-					local dt=vals and vals:FindFirstChild("DamageTool")
-					local esc=dt and dt:FindFirstChild("Escaped")
-					if esc and ValueChange then ValueChange:FireServer(esc,true) end
-				end)
-				for _,a in ipairs(COMBO_ACTIONS) do
-					pcall(function() MainKeys:FireServer(a) end)
+				local char=player.Character
+				local data=char and char:FindFirstChild("Player")
+				local damages=data and data:FindFirstChild("Damages")
+				local values=damages and damages:FindFirstChild("values")
+				local tool=values and values:FindFirstChild("DamageTool")
+				local escaped=tool and tool:FindFirstChild("Escaped")
+
+				if escaped and ValueChange then
+					pcall(function()
+						ValueChange:FireServer(escaped,true)
+					end)
+				end
+
+				for _,action in ipairs(COMBO_ACTIONS) do
+					pcall(function()
+						MainKeys:FireServer(action)
+					end)
 					task.wait(0.05)
 				end
 			end
@@ -439,39 +421,118 @@ local function comboActivate()
 		end
 	end)
 end
+
 local function comboDeactivate()
-	if comboThread then task.cancel(comboThread); comboThread=nil end
+	if comboThread then
+		task.cancel(comboThread)
+		comboThread=nil
+	end
 end
 
-local stompThread = nil
+local stompThread=nil
+
 local function stompActivate()
-	stompThread = task.spawn(function()
+	if stompThread then return end
+	stompThread=task.spawn(function()
 		while true do
-			pcall(function() MainKeys:FireServer("Stomp") end)
+			pcall(function()
+				MainKeys:FireServer("Stomp")
+			end)
 			task.wait(0.05)
 		end
 	end)
 end
+
 local function stompDeactivate()
-	if stompThread then task.cancel(stompThread); stompThread = nil end
+	if stompThread then
+		task.cancel(stompThread)
+		stompThread=nil
+	end
 end
 
-local fEscape = makeFeature("Auto Escape", Enum.KeyCode.Unknown, {onActivate = escapeActivate,onDeactivate = escapeDeactivate})
-local fCombo=makeFeature("Combo Spam",Enum.KeyCode.P,{
-	onActivate=comboActivate,
-	onDeactivate=comboDeactivate
+
+local brassActive=false
+local brassConnection=nil
+
+local function equipBrass()
+	local char=player.Character
+	local hum=char and char:FindFirstChildOfClass("Humanoid")
+	local backpack=player:FindFirstChildOfClass("Backpack")
+	if not hum or not backpack then return end
+
+	for _,tool in ipairs(backpack:GetChildren()) do
+		if tool:IsA("Tool") and tool.Name:lower():find("brass") then
+			hum:EquipTool(tool)
+			return
+		end
+	end
+end
+
+local function brassActivate()
+	if brassActive then return end
+	brassActive=true
+	equipBrass()
+	brassConnection=player.CharacterAdded:Connect(function()
+		task.wait(1)
+		if brassActive then equipBrass() end
+	end)
+end
+
+local function brassDeactivate()
+	brassActive=false
+	if brassConnection then
+		brassConnection:Disconnect()
+		brassConnection=nil
+	end
+end
+
+
+local fEscape=makeFeature("Auto Escape",Enum.KeyCode.Unknown,{
+	onActivate=escapeActivate,onDeactivate=escapeDeactivate
 })
-local fBlock=makeFeature("Auto Block",Enum.KeyCode.Unknown,{
-	onActivate=blockActivate,
-	onDeactivate=blockDeactivate})
-local fStomp = makeFeature("Auto Stomp", Enum.KeyCode.Unknown, {onActivate=stompActivate, onDeactivate=stompDeactivate})
-local fHitbx = makeFeature("Hitbox+", Enum.KeyCode.Unknown, {onActivate=hitboxActivate, onDeactivate=hitboxDeactivate, onRender=hitboxRender})
-local fValue = makeFeature("Value Edit", Enum.KeyCode.Unknown, {onRender=valueRender})
-local fLoose = makeFeature("Block LooseFight", Enum.KeyCode.Unknown, {onActivate=toggleLooseFight, onDeactivate=toggleLooseFight})
-local fBeatDn = makeFeature("Block BeatDown", Enum.KeyCode.Unknown, {onActivate=toggleBeatDown, onDeactivate=toggleBeatDown})
-local fDuo = makeFeature("Block Duo Events", Enum.KeyCode.Unknown, {onActivate=toggleDuo, onDeactivate=toggleDuo})
-local fPvp = makeFeature("PVP Off", Enum.KeyCode.Unknown, {onActivate=pvpActivate, onDeactivate=pvpDeactivate})
-local fPvpOn = makeFeature("PVP On", Enum.KeyCode.Unknown, {onActivate=pvpOnActivate, onDeactivate=pvpOnDeactivate})
+
+local fCombo=makeFeature("Combo Spam",Enum.KeyCode.P,{
+	onActivate=comboActivate,onDeactivate=comboDeactivate
+})
+
+local fStomp=makeFeature("Auto Stomp",Enum.KeyCode.Unknown,{
+	onActivate=stompActivate,onDeactivate=stompDeactivate
+})
+
+local fHitbx=makeFeature("Hitbox+",Enum.KeyCode.Unknown,{
+	onActivate=hitboxActivate,onDeactivate=hitboxDeactivate,onRender=hitboxRender
+})
+
+local fValue=makeFeature("Value Edit",Enum.KeyCode.Unknown,{
+	onRender=valueRender
+})
+
+local fBrass=makeFeature("Brass Knuckles",Enum.KeyCode.Unknown,{
+	onActivate=brassActivate,
+	onDeactivate=brassDeactivate
+})
+
+
+local fLoose=makeFeature("Block LooseFight",Enum.KeyCode.Unknown,{
+	onActivate=toggleLooseFight,onDeactivate=toggleLooseFight
+})
+
+local fBeatDn=makeFeature("Block BeatDown",Enum.KeyCode.Unknown,{
+	onActivate=toggleBeatDown,onDeactivate=toggleBeatDown
+})
+
+local fDuo=makeFeature("Block Duo Events",Enum.KeyCode.Unknown,{
+	onActivate=toggleDuo,onDeactivate=toggleDuo
+})
+
+local fPvp=makeFeature("PVP Off",Enum.KeyCode.Unknown,{
+	onActivate=pvpActivate,onDeactivate=pvpDeactivate
+})
+
+local fPvpOn=makeFeature("PVP On",Enum.KeyCode.Unknown,{
+	onActivate=pvpOnActivate,onDeactivate=pvpOnDeactivate
+})
+
 
 local GUI_W=240; local ROW_H=34; local PAD=6
 local C_BG=Color3.fromRGB(12,12,15)
@@ -710,17 +771,48 @@ local function buildSneakPanel()
 	ssg.IgnoreGuiInset=true; ssg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 	ssg.Enabled=false; ssg.Parent=playerGui
 
-	local sp=Instance.new("Frame"); sp.Size=UDim2.new(0,240,0,300); sp.Position=UDim2.new(1,-250,0.15,0)
-	sp.BackgroundColor3=Color3.fromRGB(44,12,24); sp.BorderSizePixel=0; sp.Active=true; sp.Parent=ssg
-	Instance.new("UICorner",sp).CornerRadius=UDim.new(0,12); Instance.new("UIStroke",sp).Color=Color3.fromRGB(180,50,110)
+	
 
-	local sb=Instance.new("Frame"); sb.Size=UDim2.new(1,0,0,36); sb.BackgroundColor3=Color3.fromRGB(100,22,55)
-	sb.BorderSizePixel=0; sb.Parent=sp; Instance.new("UICorner",sb).CornerRadius=UDim.new(0,12)
-	local sbf=Instance.new("Frame"); sbf.Size=UDim2.new(1,0,0,12); sbf.Position=UDim2.new(0,0,1,-12)
-	sbf.BackgroundColor3=Color3.fromRGB(100,22,55); sbf.BorderSizePixel=0; sbf.Parent=sb
-	local stl2=Instance.new("TextLabel"); stl2.Size=UDim2.new(1,-50,1,0); stl2.Position=UDim2.new(0,12,0,0)
-	stl2.BackgroundTransparency=1; stl2.Text="Sneak Tool"; stl2.TextColor3=C_LABEL; stl2.TextSize=13
-	stl2.Font=Enum.Font.GothamBold; stl2.TextXAlignment=Enum.TextXAlignment.Left; stl2.Parent=sb
+	local sp=Instance.new("Frame")
+	sp.Size=UDim2.new(0,245,0.7,0)
+	sp.Position=UDim2.new(0,8,0.15,0)
+	sp.BackgroundColor3=C_BG
+	sp.BorderSizePixel=0
+	sp.Active=true
+	sp.Parent=ssg
+	Instance.new("UICorner",sp).CornerRadius=UDim.new(0,14)
+
+	local spStroke=Instance.new("UIStroke")
+	spStroke.Color=Color3.fromRGB(145,150,165)
+	spStroke.Thickness=1
+	spStroke.Parent=sp
+
+	local sb=Instance.new("Frame")
+	sb.Size=UDim2.new(1,0,0,44)
+	sb.BackgroundColor3=C_TITLE
+	sb.BorderSizePixel=0
+	sb.Parent=sp
+	Instance.new("UICorner",sb).CornerRadius=UDim.new(0,14)
+
+	local sbf=Instance.new("Frame")
+	sbf.Size=UDim2.new(1,0,0,14)
+	sbf.Position=UDim2.new(0,0,1,-14)
+	sbf.BackgroundColor3=C_TITLE
+	sbf.BorderSizePixel=0
+	sbf.Parent=sb
+
+	local stl2=Instance.new("TextLabel")
+	stl2.Size=UDim2.new(1,-50,1,0)
+	stl2.Position=UDim2.new(0,12,0,0)
+	stl2.BackgroundTransparency=1
+	stl2.Text="Sneak Tool ⚡"
+	stl2.TextColor3=C_LABEL
+	stl2.TextSize=13
+	stl2.Font=Enum.Font.GothamBold
+	stl2.TextXAlignment=Enum.TextXAlignment.Left
+	stl2.Parent=sb
+	
+	
 	local cb=Instance.new("TextButton"); cb.Size=UDim2.new(0,24,0,24); cb.Position=UDim2.new(1,-30,0.5,-12)
 	cb.BackgroundColor3=Color3.fromRGB(220,40,90); cb.BorderSizePixel=0; cb.Text="✕"; cb.TextColor3=Color3.new(1,1,1)
 	cb.TextSize=12; cb.Font=Enum.Font.GothamBold; cb.Parent=sb
@@ -745,21 +837,43 @@ local function buildSneakPanel()
 	statusLbl.BackgroundTransparency=1; statusLbl.Text=""; statusLbl.TextColor3=C_ON; statusLbl.TextSize=11
 	statusLbl.Font=Enum.Font.Gotham; statusLbl.TextXAlignment=Enum.TextXAlignment.Left; statusLbl.Parent=sp
 
-	local ss2=Instance.new("ScrollingFrame"); ss2.Size=UDim2.new(1,-8,1,-64); ss2.Position=UDim2.new(0,4,0,40)
-	ss2.BackgroundTransparency=1; ss2.BorderSizePixel=0; ss2.ScrollBarThickness=3
-	ss2.ScrollBarImageColor3=Color3.fromRGB(180,50,110); ss2.CanvasSize=UDim2.new(0,0,0,0); ss2.Parent=sp
-	local sl=Instance.new("UIListLayout"); sl.SortOrder=Enum.SortOrder.Name; sl.Padding=UDim.new(0,4); sl.Parent=ss2
+
+	local ss2=Instance.new("ScrollingFrame")
+	ss2.Size=UDim2.new(1,-8,1,-72)
+	ss2.Position=UDim2.new(0,4,0,48)
+	ss2.BackgroundTransparency=1
+	ss2.BorderSizePixel=0
+	ss2.ScrollBarThickness=3
+	ss2.ScrollBarImageColor3=Color3.fromRGB(185,190,200)
+	ss2.CanvasSize=UDim2.new(0,0,0,0)
+	ss2.Parent=sp
+
+	local sl=Instance.new("UIListLayout")
+	sl.SortOrder=Enum.SortOrder.Name
+	sl.Padding=UDim.new(0,6)
+	sl.Parent=ss2
+
 	local spd=Instance.new("UIPadding"); spd.PaddingTop=UDim.new(0,4); spd.PaddingLeft=UDim.new(0,2)
 	spd.PaddingRight=UDim.new(0,2); spd.Parent=ss2
 
 	local pRows2={}
 	local function buildSRow(other)
 		if pRows2[other] then return end
-		local row=Instance.new("TextButton"); row.Size=UDim2.new(1,-4,0,36)
-		row.BackgroundColor3=Color3.fromRGB(74,20,44); row.BorderSizePixel=0
-		row.Text=other.DisplayName.."  ("..other.Name..")"; row.TextColor3=Color3.fromRGB(255,200,225)
-		row.TextSize=12; row.Font=Enum.Font.Gotham; row.TextXAlignment=Enum.TextXAlignment.Left
-		row.Name=other.Name; row.Parent=ss2; Instance.new("UICorner",row).CornerRadius=UDim.new(0,8)
+
+		local row=Instance.new("TextButton")
+		row.Size=UDim2.new(1,-8,0,42)
+		row.BackgroundColor3=Color3.fromRGB(32,33,39)
+		row.BorderSizePixel=0
+		row.Text=other.DisplayName.."  ("..other.Name..")"
+		row.TextColor3=C_LABEL
+		row.TextSize=12
+		row.Font=Enum.Font.GothamBold
+		row.TextXAlignment=Enum.TextXAlignment.Left
+		row.Name=other.Name
+		row.Parent=ss2
+		Instance.new("UICorner",row).CornerRadius=UDim.new(0,10)
+		
+		
 		local rp=Instance.new("UIPadding"); rp.PaddingLeft=UDim.new(0,10); rp.Parent=row
 		row.MouseEnter:Connect(function() TweenService:Create(row,TW_ROW,{BackgroundColor3=Color3.fromRGB(120,32,70)}):Play() end)
 		row.MouseLeave:Connect(function() TweenService:Create(row,TW_ROW,{BackgroundColor3=Color3.fromRGB(74,20,44)}):Play() end)
