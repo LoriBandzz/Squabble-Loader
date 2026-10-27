@@ -69,6 +69,22 @@ local HITBOX_METHODS = {"Torso","Head","Head+Torso","Root Part"}
 
 local hookActive = false
 
+local StarterGui=game:GetService("StarterGui")
+local lastCombatNotification=0
+
+local function combatNotify(message)
+	if os.clock()-lastCombatNotification<0.5 then return end
+	lastCombatNotification=os.clock()
+
+	pcall(function()
+		StarterGui:SetCore("SendNotification",{
+			Title="LoriBandzz Private ⚡",
+			Text=message,
+			Duration=2
+		})
+	end)
+end
+
 -- Strategy 1: hookmetamethod (Synapse X, ScriptWare, Fluxus)
 pcall(function()
 	if not hookmetamethod or not getnamecallmethod then return end
@@ -395,6 +411,26 @@ end
 local COMBO_ACTIONS={"Push","Punch","Drag","DamageTool"}
 local COMBO_INTERVAL=0.12
 local lastComboAction=nil
+
+local function fireComboAction(action)
+	local ok=pcall(function()
+		MainKeys:FireServer(action)
+	end)
+
+	if action=="Push" and ok then
+		combatNotify("Push sent")
+		task.wait(0.08)
+
+		local stompOk=pcall(function()
+			MainKeys:FireServer("Stomp")
+		end)
+
+		if stompOk then
+			combatNotify("Stomp sent")
+		end
+	end
+end
+
 local function comboActivate()
 	if comboThread then return end
 	comboThread=task.spawn(function()
@@ -409,23 +445,12 @@ local function comboActivate()
 
 				local action=available[math.random(1,#available)]
 				lastComboAction=action
-
-				pcall(function()
-					MainKeys:FireServer(action)
-				end)
-
-				if action=="Push" then
-					task.wait(0.08)
-					pcall(function()
-						MainKeys:FireServer("Stomp")
-					end)
-				end
+				fireComboAction(action)
 			end
 			task.wait(COMBO_INTERVAL)
 		end
 	end)
 end
-
 
 local function comboDeactivate()
 	if comboThread then
