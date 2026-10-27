@@ -58,6 +58,11 @@ local torsoCache         = {}
 local activeRenderCount  = 0
 local activeHBCount      = 0
 
+local SILVER=Color3.fromRGB(185,190,200)
+local DARK=Color3.fromRGB(25,26,31)
+local PANEL=Color3.fromRGB(38,40,47)
+local ACTIVE=Color3.fromRGB(80,85,98)
+
 local HITBOX_SIZE    = Vector3.new(5, 5, 5)
 local HITBOX_METHOD  = 1
 local HITBOX_METHODS = {"Torso","Head","Head+Torso","Root Part"}
@@ -470,41 +475,43 @@ local function buildMobileUI()
 	mP.BorderSizePixel=0
 	mP.Active=true
 	mP.Parent=mSg
-
-	ToggleButton.MouseButton1Click:Connect(function()
-		mP.Visible = not mP.Visible
-	end)
-
-	local Dragging = false
-	local DragStart
-	local StartPosition
-
-	ToggleButton.InputBegan:Connect(function(Input)
-		if Input.UserInputType == Enum.UserInputType.Touch then
-			Dragging = true
-			DragStart = Input.Position
-			StartPosition = ToggleButton.Position
-		end
-	end)
-
-	ToggleButton.InputEnded:Connect(function(Input)
-		if Input.UserInputType == Enum.UserInputType.Touch then
-			Dragging = false
-		end
-	end)
-
-	UIS.InputChanged:Connect(function(Input)
-		if Dragging and Input.UserInputType == Enum.UserInputType.Touch then
-			local Delta = Input.Position - DragStart
-			ToggleButton.Position = UDim2.new(
-				StartPosition.X.Scale,
-				StartPosition.X.Offset + Delta.X,
-				StartPosition.Y.Scale,
-				StartPosition.Y.Offset + Delta.Y
-			)
-		end
-	end)
 	
+	local dragging=false
+	local dragStart=nil
+	local startPosition=nil
+	local activeInput=nil
+	local moved=false
+
+	ToggleButton.InputBegan:Connect(function(input)
+		if input.UserInputType~=Enum.UserInputType.Touch and input.UserInputType~=Enum.UserInputType.MouseButton1 then return end
+		dragging=true
+		moved=false
+		activeInput=input
+		dragStart=input.Position
+		startPosition=ToggleButton.Position
+	end)
+
+	UIS.InputChanged:Connect(function(input)
+		if not dragging then return end
+		if input.UserInputType~=Enum.UserInputType.Touch and input.UserInputType~=Enum.UserInputType.MouseMovement then return end
+		local delta=input.Position-dragStart
+		if delta.Magnitude>8 then moved=true end
+		if not moved then return end
+		ToggleButton.Position=UDim2.new(
+			startPosition.X.Scale,startPosition.X.Offset+delta.X,
+			startPosition.Y.Scale,startPosition.Y.Offset+delta.Y
+		)
+	end)
+
+	UIS.InputEnded:Connect(function(input)
+		if not dragging then return end
+		if input~=activeInput and not (activeInput.UserInputType==Enum.UserInputType.MouseButton1 and input.UserInputType==Enum.UserInputType.MouseButton1) then return end
+		dragging=false
+		activeInput=nil
+		if not moved then
+			mP.Visible=not mP.Visible
+		end
+	end)
 	
 	Instance.new("UICorner",mP).CornerRadius=UDim.new(0,14)
 	Instance.new("UIStroke",mP).Color=Color3.fromRGB(145,150,165)
@@ -516,25 +523,10 @@ local function buildMobileUI()
 	local mT=Instance.new("TextLabel"); mT.Size=UDim2.new(1,-60,1,0); mT.Position=UDim2.new(0,10,0,0)
 	mT.BackgroundTransparency=1; mT.Text="LoriBandzz Private ⚡️"; mT.TextColor3=C_LABEL; mT.TextSize=13
 	mT.Font=Enum.Font.GothamBold; mT.TextXAlignment=Enum.TextXAlignment.Left; mT.Parent=mH
-	local mHB=Instance.new("TextButton"); mHB.Size=UDim2.new(0,36,0,36); mHB.Position=UDim2.new(1,-42,0.5,-18)
-	mHB.BackgroundColor3=Color3.fromRGB(120,30,70); mHB.BorderSizePixel=0; mHB.Text="—"
-	mHB.TextColor3=Color3.fromRGB(255,160,210); mHB.TextSize=16; mHB.Font=Enum.Font.GothamBold; mHB.Parent=mH
-	Instance.new("UICorner",mHB).CornerRadius=UDim.new(1,0)
+	mT.Size=UDim2.new(1,-20,1,0)
+	mT.Text="LoriBandzz Private ⚡"
 
-	local mScroll; local mMin=false
-	mHB.MouseButton1Click:Connect(function()
-		mMin=not mMin
-		if mMin then
-			mScroll.Visible=false
-			TweenService:Create(mP,TweenInfo.new(0.25,Enum.EasingStyle.Cubic,Enum.EasingDirection.Out),{Size=UDim2.new(0,245,0.7,0)}):Play()
-			mHB.Text="+"
-		else
-			mScroll.Visible=true
-			TweenService:Create(mP,TweenInfo.new(0.25,Enum.EasingStyle.Cubic,Enum.EasingDirection.Out),{Size=UDim2.new(0,300,0.85,0)}):Play()
-			mHB.Text="—"
-		end
-	end)
-
+	local mScroll
 	mScroll=Instance.new("ScrollingFrame"); mScroll.Size=UDim2.new(1,-8,1,-52); mScroll.Position=UDim2.new(0,4,0,48)
 	mScroll.BackgroundTransparency=1; mScroll.BorderSizePixel=0; mScroll.ScrollBarThickness=3
 	mScroll.ScrollBarImageColor3=Color3.fromRGB(180,50,110); mScroll.CanvasSize=UDim2.new(0,0,0,0); mScroll.Parent=mP
@@ -569,7 +561,6 @@ local function buildMobileUI()
 			if feat.state then feat.onActivate() else feat.onDeactivate() end; upd()
 		end
 		tb.MouseButton1Click:Connect(tog)
-		row.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch then tog() end end)
 	end
 
 	local function mInput(ph,btnT,btnC,cb)
