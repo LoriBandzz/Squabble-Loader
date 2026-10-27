@@ -1,3 +1,7 @@
+pcall(function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/Pixeluted/adoniscries/main/Source.lua", true))()
+end)
+
 local Players           = game:GetService("Players")
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
