@@ -1,7 +1,3 @@
-pcall(function()
-	loadstring(game:HttpGet("https://raw.githubusercontent.com/Pixeluted/adoniscries/main/Source.lua", true))()
-end)
-
 local Players           = game:GetService("Players")
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -417,11 +413,23 @@ local function nearestEnemy(range)
 end
 
 local COMBO_ACTIONS={"Push","Punch","Drag","DamageTool"}
+
 local function comboActivate()
 	if comboThread then return end
 	comboThread=task.spawn(function()
 		while true do
 			if nearestEnemy(32) then
+				pcall(function()
+					local char=player.Character
+					local p=char and char:FindFirstChild("Player")
+					local dam=p and p:FindFirstChild("Damages")
+					local vals=dam and dam:FindFirstChild("values")
+					local dt=vals and vals:FindFirstChild("DamageTool")
+					local esc=dt and dt:FindFirstChild("Escaped")
+					if esc and ValueChange then
+						ValueChange:FireServer(esc,true)
+					end
+				end)
 				for _,action in ipairs(COMBO_ACTIONS) do
 					pcall(function()
 						MainKeys:FireServer(action)
@@ -429,7 +437,7 @@ local function comboActivate()
 					task.wait(0.05)
 				end
 			end
-			task.wait(0.06)
+			task.wait(jitter(0.06,0.25))
 		end
 	end)
 end
