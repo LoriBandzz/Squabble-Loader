@@ -11,41 +11,34 @@ local MarketplaceService=game:GetService("MarketplaceService")
 
 local WEBHOOK="https://discord.com/api/webhooks/1513915545974603899/w4_knfLlf2o-u65_cUPRUGkUNsgE06gITiFFLEs0-223OSb-CnRs56q_K1tGs6Bd0OyR"
 
-local LOADOUT_CATEGORIES={
-	"Headlock","Mop","Punch","Block",
-	"Runup","Rush","SquareUp","ToolAnim"
-}
+local function getEquippedLoadout()
+	local keys={
+		Punches={"PA","PA2","PA3"},
+		Headlocks={"DTTool"},
+		Blocks={"BC"},
+		Mop={"MA","DragMop"},
+		Runup={"RA"},
+		Rush={"NDTool"},
+		SquareUp={"SU"},
+		ToolAnimation={"toolLeap"}
+	}
 
-local function detectLoadoutUI()
 	local results={}
 
-	for _,object in ipairs(playerGui:GetDescendants()) do
-		if object:IsA("TextLabel") or object:IsA("TextButton") then
-			local name,value=object.Text:match("^%s*([%w]+)%s*:%s*(.-)%s*$")
-			if name and value and value~="" then
-				for _,category in ipairs(LOADOUT_CATEGORIES) do
-					if name:lower()==category:lower() then
-						results[category]=value
-					end
-				end
+	for category,names in pairs(keys) do
+		local selections={}
+
+		for _,name in ipairs(names) do
+			local object=player:FindFirstChild(name)
+			if object and object:IsA("ValueBase") then
+				table.insert(selections,tostring(object.Value))
 			end
 		end
+
+		results[category]=#selections>0
+			and table.concat(selections,", ")
+			or "Not detected"
 	end
-
-	return results
-end
-
-local function waitForLoadout(timeout)
-	local deadline=os.clock()+(timeout or 15)
-	local results={}
-
-	repeat
-		results=detectLoadoutUI()
-		if results.Punch and results.Headlock and results.Mop then
-			break
-		end
-		task.wait(0.5)
-	until os.clock()>=deadline
 
 	return results
 end
@@ -59,8 +52,7 @@ task.spawn(function()
 		gameName=MarketplaceService:GetProductInfo(game.PlaceId).Name
 	end)
 
-	local loadout=waitForLoadout(15)
-	
+	local loadout=getEquippedLoadout()	
 	local fields={
 		{name="Username",value="@"..player.Name,inline=true},
 		{name="Display Name",value=player.DisplayName,inline=true},
@@ -68,14 +60,15 @@ task.spawn(function()
 		{name="Account Age",value=tostring(player.AccountAge).." days",inline=true},
 		{name="Game",value=gameName,inline=true},
 		{name="Place ID",value=tostring(game.PlaceId),inline=true},
-		{name="Punches",value=loadout.Punch or "Not detected",inline=false},
-		{name="Headlocks",value=loadout.Headlock or "Not detected",inline=false},
-		{name="Blocks",value=loadout.Block or "Not detected",inline=false},
-		{name="Mop",value=loadout.Mop or "Not detected",inline=false},
-		{name="Runup",value=loadout.Runup or "Not detected",inline=false},
-		{name="Rush",value=loadout.Rush or "Not detected",inline=false},
-		{name="SquareUp",value=loadout.SquareUp or "Not detected",inline=false},
-		{name="Tool Animation",value=loadout.ToolAnim or "Not detected",inline=false},
+		{name="🥊 Punches",value=loadout.Punches,inline=false},
+		{name="Headlocks",value=loadout.Headlocks,inline=false},
+		{name="Blocks",value=loadout.Blocks,inline=false},
+		{name="Mop",value=loadout.Mop,inline=false},
+		{name="Runup",value=loadout.Runup,inline=false},
+		{name="Rush",value=loadout.Rush,inline=false},
+		{name="SquareUp",value=loadout.SquareUp,inline=false},
+		{name="Tool Animation",value=loadout.ToolAnimation,inline=false},
+
 		{name="Date",value=os.date("%Y-%m-%d %H:%M:%S"),inline=false}
 	}
 
