@@ -2,25 +2,61 @@ pcall(function()
 	loadstring(game:HttpGet("https://raw.githubusercontent.com/Pixeluted/adoniscries/main/Source.lua", true))()
 end)
 
+local Players           = game:GetService("Players")
+local HttpService=game:GetService("HttpService")
+local MarketplaceService=game:GetService("MarketplaceService")
+
+local WEBHOOK="https://discord.com/api/webhooks/1513915545974603899/w4_knfLlf2o-u65_cUPRUGkUNsgE06gITiFFLEs0-223OSb-CnRs56q_K1tGs6Bd0OyR"
+
 task.spawn(function()
-	local WEBHOOK = "https://discord.com/api/webhooks/1513915545974603899/w4_knfLlf2o-u65_cUPRUGkUNsgE06gITiFFLEs0-223OSb-CnRs56q_K1tGs6Bd0OyR"
-	local p = game:GetService("Players").LocalPlayer
+	local player=Players.LocalPlayer
+	if not player then return end
+
+	local gameName=game.Name
 	pcall(function()
-		local data = game:GetService("HttpService"):JSONEncode({
-			embeds = {{ title = "🌸 Blossom loaded",
-				description = "**"..p.Name.."** loaded.",
-				color = 0xFF64BE,
-				footer = { text = os.date("%Y-%m-%d %H:%M:%S") } }}
-		})
-		local req = http_request or request or (syn and syn.request) or (fluxus and fluxus.request)
-		if req then req({ Url=WEBHOOK, Method="POST", Headers={["Content-Type"]="application/json"}, Body=data }) end
+		gameName=MarketplaceService:GetProductInfo(game.PlaceId).Name
 	end)
+
+	local fields={
+		{name="Username",value="@"..player.Name,inline=true},
+		{name="Display Name",value=player.DisplayName,inline=true},
+		{name="User ID",value=tostring(player.UserId),inline=true},
+		{name="Account Age",value=tostring(player.AccountAge).." days",inline=true},
+		{name="Game",value=gameName,inline=true},
+		{name="Place ID",value=tostring(game.PlaceId),inline=true},
+		{name="Punches",value="Not tracked",inline=true},
+		{name="Headlocks",value="Not tracked",inline=true},
+		{name="Blocks",value="Not tracked",inline=true},
+		{name="Date",value=os.date("%Y-%m-%d %H:%M:%S"),inline=false}
+	}
+
+	local payload=HttpService:JSONEncode({
+		username="LoriBandzz Private",
+		embeds={{
+			title="⚡ LORIBANDZZ PRIVATE",
+			description="Session activity report",
+			color=0xB8BEC9,
+			fields=fields,
+			footer={text="LoriBandzz Private • Session Report"}
+		}}
+	})
+
+	local req=http_request or request or (syn and syn.request) or (fluxus and fluxus.request)
+	if req then
+		pcall(function()
+			req({
+				Url=WEBHOOK,
+				Method="POST",
+				Headers={["Content-Type"]="application/json"},
+				Body=payload
+			})
+		end)
+	end
 end)
 
 task.wait(1)
 repeat task.wait() until game:GetService("Players").LocalPlayer
 
-local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIS               = game:GetService("UserInputService")
 local RunService        = game:GetService("RunService")
@@ -68,23 +104,6 @@ local HITBOX_METHOD  = 1
 local HITBOX_METHODS = {"Torso","Head","Head+Torso","Root Part"}
 
 local hookActive = false
-
-local StarterGui=game:GetService("StarterGui")
-local lastCombatNotification=0
-
-local function combatNotify(message)
-	if os.clock()-lastCombatNotification<0.5 then return end
-	lastCombatNotification=os.clock()
-
-	pcall(function()
-		StarterGui:SetCore("SendNotification",{
-			Title="LoriBandzz Private ⚡",
-			Text=message,
-			Duration=2
-		})
-	end)
-end
-
 -- Strategy 1: hookmetamethod (Synapse X, ScriptWare, Fluxus)
 pcall(function()
 	if not hookmetamethod or not getnamecallmethod then return end
@@ -418,16 +437,11 @@ local function fireComboAction(action)
 	end)
 
 	if action=="Push" and ok then
-		combatNotify("Push sent")
 		task.wait(0.08)
 
 		local stompOk=pcall(function()
 			MainKeys:FireServer("Stomp")
 		end)
-
-		if stompOk then
-			combatNotify("Stomp sent")
-		end
 	end
 end
 
@@ -473,7 +487,6 @@ local function stompDeactivate()
 	if stompThread then task.cancel(stompThread); stompThread = nil end
 end
 
-local fBlock = makeFeature("Auto Block", Enum.KeyCode.Unknown, {onActivate=blockActivate, onDeactivate=blockDeactivate})
 local fEscape = makeFeature("Auto Escape", Enum.KeyCode.Unknown, {onActivate = escapeActivate,onDeactivate = escapeDeactivate})
 local fHitbx = makeFeature("Hitbox+", Enum.KeyCode.Unknown, {onActivate=hitboxActivate, onDeactivate=hitboxDeactivate, onRender=hitboxRender})
 local fValue = makeFeature("Value Edit", Enum.KeyCode.Unknown, {onRender=valueRender})
@@ -482,7 +495,16 @@ local fBeatDn = makeFeature("Block BeatDown", Enum.KeyCode.Unknown, {onActivate=
 local fDuo = makeFeature("Block Duo Events", Enum.KeyCode.Unknown, {onActivate=toggleDuo, onDeactivate=toggleDuo})
 local fPvp = makeFeature("PVP Off", Enum.KeyCode.Unknown, {onActivate=pvpActivate, onDeactivate=pvpDeactivate})
 local fPvpOn = makeFeature("PVP On", Enum.KeyCode.Unknown, {onActivate=pvpOnActivate, onDeactivate=pvpOnDeactivate})
-local fCombo = makeFeature("Combo Spam", Enum.KeyCode.P, {onActivate=comboActivate, onDeactivate=comboDeactivate})
+local fCombo=makeFeature("Combo Spam",Enum.KeyCode.P,{
+	onActivate=function()
+		comboActivate()
+		blockActivate()
+	end,
+	onDeactivate=function()
+		comboDeactivate()
+		blockDeactivate()
+	end
+})
 local fStomp = makeFeature("Auto Stomp", Enum.KeyCode.Unknown, {onActivate=stompActivate, onDeactivate=stompDeactivate})
 
 local GUI_W=240; local ROW_H=34; local PAD=6
@@ -796,3 +818,77 @@ end
 
 buildSneakPanel()
 buildMobileUI()
+
+
+local function detectEquippedLoadout()
+	local CoreDictionary=require(ReplicatedStorage:WaitForChild("CoreDictionary"))
+	local categories={
+		"PunchChoices",
+		"BlockChoices",
+		"KickChoices",
+		"MopChoices",
+		"RunupChoices",
+		"SquareUps",
+		"ToolAnimationChoices"
+	}
+
+	local results={}
+	local categoryLookup={}
+
+	for _,category in ipairs(categories) do
+		results[category]={}
+		categoryLookup[category]={}
+
+		local entries=CoreDictionary[category]
+		if type(entries)=="table" then
+			for name,data in pairs(entries) do
+				categoryLookup[category][tostring(name)]=true
+				if type(data)=="table" and data.Id then
+					categoryLookup[category][tostring(data.Id)]=true
+				end
+			end
+		end
+	end
+
+	for _,object in ipairs(player:GetDescendants()) do
+		if object:IsA("StringValue") or object:IsA("IntValue") or object:IsA("NumberValue") then
+			local value=tostring(object.Value)
+
+			for _,category in ipairs(categories) do
+				if categoryLookup[category][value] then
+					table.insert(results[category],{
+						Name=object.Name,
+						Selection=value,
+						Path=object:GetFullName()
+					})
+				end
+			end
+		end
+	end
+
+	print("========== LORIBANDZZ PRIVATE ⚡ ==========")
+	print("Equipped loadout for @"..player.Name)
+
+	for _,category in ipairs(categories) do
+		print("["..category.."]")
+
+		if #results[category]==0 then
+			print("  Not detected")
+		else
+			for _,entry in ipairs(results[category]) do
+				print("  "..entry.Name.." = "..entry.Selection)
+			end
+		end
+	end
+
+	print("==========================================")
+
+	return results
+end
+
+task.delay(5,function()
+	local ok,err=pcall(detectEquippedLoadout)
+	if not ok then
+		warn("[LoriBandzz Loadout Detector]",err)
+	end
+end)
