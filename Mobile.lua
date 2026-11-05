@@ -390,6 +390,127 @@ local function nearestEnemy(range)
 	return best
 end
 
+local AnimationSystem = require(ReplicatedStorage.Modules.AnimationSystem)
+
+local punchAnimations = {
+	"PunchNL", "PunchNL2", "PunchNL3"
+}
+
+local leapAnimations = {
+	"ToolLeap", "ToolLeap2", "ToolLeap3"
+}
+
+local punchIndex = 1
+local lastPunch = 0
+local lastLeap = 0
+local lastStomp = 0
+local previousLeap = nil
+
+local function canFight()
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not root or not hum or hum.Health <= 0 then return false end
+
+	local data = char:FindFirstChild("Player")
+	local pvp = data and data:FindFirstChild("PvpOn")
+	local damages = data and data:FindFirstChild("Damages")
+	local ragdoll = damages and damages:FindFirstChild("Ragdoll")
+
+	if not pvp or not pvp.Value then return false end
+	if ragdoll and ragdoll.Value then return false end
+
+	return true
+end
+
+local function fightingTarget()
+	if not canFight() then return nil end
+
+	local char = player.Character
+	local root = char.HumanoidRootPart
+
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= player then
+			local target = other.Character
+			local targetRoot = target and target:FindFirstChild("HumanoidRootPart")
+			local targetHum = target and target:FindFirstChildOfClass("Humanoid")
+
+			if targetRoot and targetHum and targetHum.Health > 0 then
+				local offset = targetRoot.Position - root.Position
+
+				if offset.Magnitude > 0 and offset.Magnitude <= 10 then
+					if root.CFrame.LookVector:Dot(offset.Unit) > 0.35 then
+						return other
+					end
+				end
+			end
+		end
+	end
+end
+
+local function playComboPunch()
+	if not fightingTarget() then return end
+	if os.clock() - lastPunch < 0.35 then return end
+
+	local char = player.Character
+	local data = char:FindFirstChild("Player")
+	local allowed = data and data:FindFirstChild("AllowAnimations")
+	if allowed and not allowed.Value then return end
+
+	lastPunch = os.clock()
+
+	local name = punchAnimations[punchIndex]
+	punchIndex = punchIndex % #punchAnimations + 1
+
+	pcall(function()
+		local track = AnimationSystem.GetTrack(char, name)
+		if track then
+			track:Stop(0)
+			track:Play(0.05)
+		end
+	end)
+end
+
+local function playComboLeap()
+	if not fightingTarget() then return end
+	if os.clock() - lastLeap < 1 then return end
+
+	local char = player.Character
+	local data = char:FindFirstChild("Player")
+	local damages = data and data:FindFirstChild("Damages")
+	local values = damages and damages:FindFirstChild("values")
+	local active = values and values:FindFirstChild("DamageTool")
+
+	if active and active.Value then return end
+
+	local choices = {}
+
+	for _, name in ipairs(leapAnimations) do
+		if name ~= previousLeap then
+			table.insert(choices, name)
+		end
+	end
+
+	local name = choices[math.random(1, #choices)]
+	previousLeap = name
+	lastLeap = os.clock()
+
+	pcall(function()
+		AnimationSystem.PlayAnimation(char, name)
+	end)
+end
+
+local function playComboStomp()
+	if not fightingTarget() then return end
+	if os.clock() - lastStomp < 1 then return end
+
+	lastStomp = os.clock()
+
+	pcall(function()
+		AnimationSystem.PlayAnimation(player.Character, "Stomp")
+	end)
+end
+
 local COMBO_ACTIONS={"Push","Punch","Drag","DamageTool"}
 
 local function comboActivate()
@@ -410,12 +531,19 @@ local function comboActivate()
 					end)
 				end
 
-				for _,action in ipairs(COMBO_ACTIONS) do
-					pcall(function()
-						MainKeys:FireServer(action)
-					end)
-					task.wait(0.05)
+
+				if fightingTarget() then
+					MainKeys:FireServer("Push")
+
+					playComboPunch()
+					MainKeys:FireServer("Punch")
+
+					MainKeys:FireServer("Drag")
+
+					playComboLeap()
+					MainKeys:FireServer("DamageTool")
 				end
+
 			end
 			task.wait(jitter(0.06,0.25))
 		end
@@ -433,15 +561,21 @@ local stompThread=nil
 
 local function stompActivate()
 	if stompThread then return end
-	stompThread=task.spawn(function()
+
+	stompThread = task.spawn(function()
 		while true do
-			pcall(function()
-				MainKeys:FireServer("Stomp")
-			end)
-			task.wait(0.05)
+			if fightingTarget() and os.clock() - lastStomp >= 1 then
+				playComboStomp()
+				pcall(function()
+					MainKeys:FireServer("Stomp")
+				end)
+			end
+
+			task.wait(0.1)
 		end
 	end)
 end
+
 
 local function stompDeactivate()
 	if stompThread then
@@ -486,99 +620,8 @@ local function brassDeactivate()
 	end
 end
 
-local AnimationSystem = require(ReplicatedStorage.Modules.AnimationSystem)
-
-local punchNames = {
-	"PunchNL",
-	"PunchNL2",
-	"PunchNL3"
-}
-
-local punchRunning = false
-local punchThread = nil
-local punchIndex = 1
-
-local function punchActivate()
-	if punchRunning then return end
-	punchRunning = true
-
-	punchThread = task.spawn(function()
-		while punchRunning do
-			local char = player.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-			if hum and hum.Health > 0 then
-				local values = char:FindFirstChild("Player")
-				local allowed = values and values:FindFirstChild("AllowAnimations")
-				local keyChecker = values and values:FindFirstChild("KeyChecker")
-				local damages = values and values:FindFirstChild("Damages")
-				local ragdoll = damages and damages:FindFirstChild("Ragdoll")
-
-				if (not keyChecker or keyChecker.Value)
-					and (not ragdoll or not ragdoll.Value) then
-
-					local name = punchNames[punchIndex]
-					local track = AnimationSystem.GetTrack(char, name)
-
-					if not allowed or allowed.Value then
-						if track then
-							pcall(function()
-								track:Stop(0)
-								track:Play(0.05)
-							end)
-						end
-					end
-
-					pcall(function()
-						MainKeys:FireServer("Punch")
-					end)
-
-					punchIndex = punchIndex % #punchNames + 1
-
-					local duration = track and track.Length or 0
-					task.wait(duration > 0 and duration or 0.8)
-				else
-					task.wait(0.1)
-				end
-			else
-				task.wait(0.2)
-			end
-		end
-	end)
-end
-
-local function punchDeactivate()
-	punchRunning = false
-
-	if punchThread then
-		task.cancel(punchThread)
-		punchThread = nil
-	end
-
-	local char = player.Character
-	if not char then return end
-
-	for _, name in ipairs(punchNames) do
-		local track = AnimationSystem.GetTrack(char, name)
-		if track then
-			pcall(function()
-				track:Stop(0.1)
-			end)
-		end
-	end
-end
-
-player.CharacterAdded:Connect(function()
-	punchIndex = 1
-end)
-
 local fEscape=makeFeature("Auto Escape",Enum.KeyCode.Unknown,{
 	onActivate=escapeActivate,onDeactivate=escapeDeactivate
-})
-
-local fPunch = makeFeature("Auto Punch", Enum.KeyCode.Unknown, {
-	onActivate = punchActivate,
-	onDeactivate = punchDeactivate
 })
 
 local fCombo=makeFeature("Combo Spam",Enum.KeyCode.P,{
