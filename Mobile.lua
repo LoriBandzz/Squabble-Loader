@@ -390,44 +390,39 @@ local function nearestEnemy(range)
 	return best
 end
 
+local lastStomp = 0
+
 local AnimationSystem = require(ReplicatedStorage.Modules.AnimationSystem)
 
-local punchAnimations = {
-	"PunchNL", "PunchNL2", "PunchNL3"
-}
-
-local leapAnimations = {
-	"ToolLeap", "ToolLeap2", "ToolLeap3"
-}
+local punches = {"PunchNL", "PunchNL2", "PunchNL3"}
+local leaps = {"ToolLeap", "ToolLeap2", "ToolLeap3"}
 
 local punchIndex = 1
 local lastPunch = 0
 local lastLeap = 0
-local lastStomp = 0
-local previousLeap = nil
+local lastLeapName = nil
 
 local function canFight()
 	local char = player.Character
-	local root = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if not root or not hum or hum.Health <= 0 then return false end
-
-	local data = char:FindFirstChild("Player")
+	local data = char and char:FindFirstChild("Player")
 	local pvp = data and data:FindFirstChild("PvpOn")
 	local damages = data and data:FindFirstChild("Damages")
 	local ragdoll = damages and damages:FindFirstChild("Ragdoll")
 
-	if not pvp or not pvp.Value then return false end
-	if ragdoll and ragdoll.Value then return false end
-
-	return true
+	return hum and hum.Health > 0
+		and pvp and pvp.Value
+		and not (ragdoll and ragdoll.Value)
 end
 
 local function fightingTarget()
 	if not canFight() then return nil end
 
 	local char = player.Character
-	local root = char.HumanoidRootPart
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not root then return nil end
+
+	local nearest, distance = nil, 16
 
 	for _, other in ipairs(Players:GetPlayers()) do
 		if other ~= player then
@@ -436,68 +431,71 @@ local function fightingTarget()
 			local targetHum = target and target:FindFirstChildOfClass("Humanoid")
 
 			if targetRoot and targetHum and targetHum.Health > 0 then
-				local offset = targetRoot.Position - root.Position
-
-				if offset.Magnitude > 0 and offset.Magnitude <= 10 then
-					if root.CFrame.LookVector:Dot(offset.Unit) > 0.35 then
-						return other
-					end
+				local d = (root.Position - targetRoot.Position).Magnitude
+				if d < distance then
+					nearest = other
+					distance = d
 				end
 			end
 		end
 	end
+
+	return nearest
 end
 
-local function playComboPunch()
-	if not fightingTarget() then return end
-	if os.clock() - lastPunch < 0.35 then return end
+local function playPunch()
+	if os.clock() - lastPunch < 0.25 then return end
 
 	local char = player.Character
+	if not char then return end
+
 	local data = char:FindFirstChild("Player")
 	local allowed = data and data:FindFirstChild("AllowAnimations")
 	if allowed and not allowed.Value then return end
 
-	lastPunch = os.clock()
+	local name = punches[punchIndex]
+	punchIndex = punchIndex % #punches + 1
 
-	local name = punchAnimations[punchIndex]
-	punchIndex = punchIndex % #punchAnimations + 1
-
-	pcall(function()
+	local ok = pcall(function()
 		local track = AnimationSystem.GetTrack(char, name)
 		if track then
-			track:Stop(0)
 			track:Play(0.05)
 		end
 	end)
+
+	if ok then lastPunch = os.clock() end
 end
 
-local function playComboLeap()
-	if not fightingTarget() then return end
-	if os.clock() - lastLeap < 1 then return end
+local function playLeap()
+	if os.clock() - lastLeap < 1 then return false end
 
 	local char = player.Character
+	if not char then return false end
+
 	local data = char:FindFirstChild("Player")
 	local damages = data and data:FindFirstChild("Damages")
 	local values = damages and damages:FindFirstChild("values")
 	local active = values and values:FindFirstChild("DamageTool")
 
-	if active and active.Value then return end
+	if active and active.Value then return false end
 
 	local choices = {}
-
-	for _, name in ipairs(leapAnimations) do
-		if name ~= previousLeap then
+	for _, name in ipairs(leaps) do
+		if name ~= lastLeapName then
 			table.insert(choices, name)
 		end
 	end
 
-	local name = choices[math.random(1, #choices)]
-	previousLeap = name
-	lastLeap = os.clock()
-
-	pcall(function()
+	local name = choices[math.random(#choices)]
+	local ok = pcall(function()
 		AnimationSystem.PlayAnimation(char, name)
 	end)
+
+	if not ok then return false end
+
+	lastLeap = os.clock()
+	lastLeapName = name
+	return true
 end
 
 local function playComboStomp()
@@ -511,41 +509,25 @@ local function playComboStomp()
 	end)
 end
 
-local COMBO_ACTIONS={"Push","Punch","Drag","DamageTool"}
-
 local function comboActivate()
 	if comboThread then return end
-	comboThread=task.spawn(function()
+
+	comboThread = task.spawn(function()
 		while true do
-			if nearestEnemy(32) then
-				local char=player.Character
-				local data=char and char:FindFirstChild("Player")
-				local damages=data and data:FindFirstChild("Damages")
-				local values=damages and damages:FindFirstChild("values")
-				local tool=values and values:FindFirstChild("DamageTool")
-				local escaped=tool and tool:FindFirstChild("Escaped")
-
-				if escaped and ValueChange then
-					pcall(function()
-						ValueChange:FireServer(escaped,true)
-					end)
-				end
-
-
-				if fightingTarget() then
+			if fightingTarget() then
+				pcall(function()
 					MainKeys:FireServer("Push")
-
-					playComboPunch()
+					playPunch()
 					MainKeys:FireServer("Punch")
-
 					MainKeys:FireServer("Drag")
 
-					playComboLeap()
-					MainKeys:FireServer("DamageTool")
-				end
-
+					if playLeap() then
+						MainKeys:FireServer("DamageTool")
+					end
+				end)
 			end
-			task.wait(jitter(0.06,0.25))
+
+			task.wait(0.08)
 		end
 	end)
 end
@@ -619,6 +601,63 @@ local function brassDeactivate()
 		brassConnection=nil
 	end
 end
+
+
+local healthBoostActive = false
+local healthConnection = nil
+local originalMaxHealth = nil
+local HEALTH_BONUS = 15
+
+local function applyHealthBoost()
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+
+	if not originalMaxHealth then
+		originalMaxHealth = hum.MaxHealth
+	end
+
+	hum.MaxHealth = originalMaxHealth + HEALTH_BONUS
+	hum.Health = math.min(hum.Health + HEALTH_BONUS, hum.MaxHealth)
+end
+
+local function healthBoostActivate()
+	healthBoostActive = true
+	applyHealthBoost()
+
+	healthConnection = player.CharacterAdded:Connect(function(char)
+		originalMaxHealth = nil
+		local hum = char:WaitForChild("Humanoid", 10)
+
+		if hum and healthBoostActive then
+			applyHealthBoost()
+		end
+	end)
+end
+
+local function healthBoostDeactivate()
+	healthBoostActive = false
+
+	if healthConnection then
+		healthConnection:Disconnect()
+		healthConnection = nil
+	end
+
+	local hum = player.Character
+		and player.Character:FindFirstChildOfClass("Humanoid")
+
+	if hum and originalMaxHealth then
+		hum.MaxHealth = originalMaxHealth
+		hum.Health = math.min(hum.Health, hum.MaxHealth)
+	end
+
+	originalMaxHealth = nil
+end
+
+local fHealth = makeFeature("Health Boost", Enum.KeyCode.Unknown, {
+    onActivate = healthBoostActivate,
+    onDeactivate = healthBoostDeactivate
+})
 
 local fEscape=makeFeature("Auto Escape",Enum.KeyCode.Unknown,{
 	onActivate=escapeActivate,onDeactivate=escapeDeactivate
