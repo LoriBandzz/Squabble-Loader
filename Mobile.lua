@@ -486,9 +486,38 @@ local function brassDeactivate()
 	end
 end
 
+local punchThread=nil
+
+local function punchActivate()
+	if punchThread then return end
+
+	punchThread=task.spawn(function()
+		while true do
+			for i=1,4 do
+				pcall(function()
+					MainKeys:FireServer("Punch")
+					MainKeys:FireServer("DamageTool")
+				end)
+			end
+			task.wait(0.1)
+		end
+	end)
+end
+
+local function punchDeactivate()
+	if punchThread then
+		task.cancel(punchThread)
+		punchThread=nil
+	end
+end
 
 local fEscape=makeFeature("Auto Escape",Enum.KeyCode.Unknown,{
 	onActivate=escapeActivate,onDeactivate=escapeDeactivate
+})
+
+local fPunch=makeFeature("Auto Punch",Enum.KeyCode.Unknown,{
+	onActivate=punchActivate,
+	onDeactivate=punchDeactivate
 })
 
 local fCombo=makeFeature("Combo Spam",Enum.KeyCode.P,{
@@ -563,7 +592,7 @@ local infoLabelRef=nil
 local function buildMobileUI()
 	local mSg=Instance.new("ScreenGui"); mSg.Name="BLOSSOM_MOBILE"; mSg.ResetOnSpawn=false
 	mSg.IgnoreGuiInset=true; mSg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; mSg.Parent=playerGui
-	
+
 	local ToggleButton=Instance.new("TextButton")
 	ToggleButton.Name="LoriBandzzToggle"
 	ToggleButton.Size=UDim2.fromOffset(34,34)
@@ -591,7 +620,7 @@ local function buildMobileUI()
 	mP.BorderSizePixel=0
 	mP.Active=true
 	mP.Parent=mSg
-	
+
 	local dragging=false
 	local dragStart=nil
 	local startPosition=nil
@@ -628,10 +657,10 @@ local function buildMobileUI()
 			mP.Visible=not mP.Visible
 		end
 	end)
-	
+
 	Instance.new("UICorner",mP).CornerRadius=UDim.new(0,14)
 	Instance.new("UIStroke",mP).Color=Color3.fromRGB(145,150,165)
-	
+
 	local mH=Instance.new("Frame"); mH.Size=UDim2.new(1,0,0,44); mH.BackgroundColor3=C_TITLE
 	mH.BorderSizePixel=0; mH.Parent=mP; Instance.new("UICorner",mH).CornerRadius=UDim.new(0,14)
 	local mHF=Instance.new("Frame"); mHF.Size=UDim2.new(1,0,0,14); mHF.Position=UDim2.new(0,0,1,-14)
@@ -771,7 +800,7 @@ local function buildSneakPanel()
 	ssg.IgnoreGuiInset=true; ssg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 	ssg.Enabled=false; ssg.Parent=playerGui
 
-	
+
 
 	local sp=Instance.new("Frame")
 	sp.Size=UDim2.new(0,245,0.7,0)
@@ -811,8 +840,8 @@ local function buildSneakPanel()
 	stl2.Font=Enum.Font.GothamBold
 	stl2.TextXAlignment=Enum.TextXAlignment.Left
 	stl2.Parent=sb
-	
-	
+
+
 	local cb=Instance.new("TextButton"); cb.Size=UDim2.new(0,24,0,24); cb.Position=UDim2.new(1,-30,0.5,-12)
 	cb.BackgroundColor3=Color3.fromRGB(220,40,90); cb.BorderSizePixel=0; cb.Text="✕"; cb.TextColor3=Color3.new(1,1,1)
 	cb.TextSize=12; cb.Font=Enum.Font.GothamBold; cb.Parent=sb
@@ -872,8 +901,8 @@ local function buildSneakPanel()
 		row.Name=other.Name
 		row.Parent=ss2
 		Instance.new("UICorner",row).CornerRadius=UDim.new(0,10)
-		
-		
+
+
 		local rp=Instance.new("UIPadding"); rp.PaddingLeft=UDim.new(0,10); rp.Parent=row
 		row.MouseEnter:Connect(function() TweenService:Create(row,TW_ROW,{BackgroundColor3=Color3.fromRGB(120,32,70)}):Play() end)
 		row.MouseLeave:Connect(function() TweenService:Create(row,TW_ROW,{BackgroundColor3=Color3.fromRGB(74,20,44)}):Play() end)
