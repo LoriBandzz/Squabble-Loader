@@ -486,38 +486,99 @@ local function brassDeactivate()
 	end
 end
 
-local punchThread=nil
+local AnimationSystem = require(ReplicatedStorage.Modules.AnimationSystem)
+
+local punchNames = {
+	"PunchNL",
+	"PunchNL2",
+	"PunchNL3"
+}
+
+local punchRunning = false
+local punchThread = nil
+local punchIndex = 1
 
 local function punchActivate()
-	if punchThread then return end
+	if punchRunning then return end
+	punchRunning = true
 
-	punchThread=task.spawn(function()
-		while true do
-			for i=1,4 do
-				pcall(function()
-					MainKeys:FireServer("Punch")
-					MainKeys:FireServer("DamageTool")
-				end)
+	punchThread = task.spawn(function()
+		while punchRunning do
+			local char = player.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+			if hum and hum.Health > 0 then
+				local values = char:FindFirstChild("Player")
+				local allowed = values and values:FindFirstChild("AllowAnimations")
+				local keyChecker = values and values:FindFirstChild("KeyChecker")
+				local damages = values and values:FindFirstChild("Damages")
+				local ragdoll = damages and damages:FindFirstChild("Ragdoll")
+
+				if (not keyChecker or keyChecker.Value)
+					and (not ragdoll or not ragdoll.Value) then
+
+					local name = punchNames[punchIndex]
+					local track = AnimationSystem.GetTrack(char, name)
+
+					if not allowed or allowed.Value then
+						if track then
+							pcall(function()
+								track:Stop(0)
+								track:Play(0.05)
+							end)
+						end
+					end
+
+					pcall(function()
+						MainKeys:FireServer("Punch")
+					end)
+
+					punchIndex = punchIndex % #punchNames + 1
+
+					local duration = track and track.Length or 0
+					task.wait(duration > 0 and duration or 0.8)
+				else
+					task.wait(0.1)
+				end
+			else
+				task.wait(0.2)
 			end
-			task.wait(0.1)
 		end
 	end)
 end
 
 local function punchDeactivate()
+	punchRunning = false
+
 	if punchThread then
 		task.cancel(punchThread)
-		punchThread=nil
+		punchThread = nil
+	end
+
+	local char = player.Character
+	if not char then return end
+
+	for _, name in ipairs(punchNames) do
+		local track = AnimationSystem.GetTrack(char, name)
+		if track then
+			pcall(function()
+				track:Stop(0.1)
+			end)
+		end
 	end
 end
+
+player.CharacterAdded:Connect(function()
+	punchIndex = 1
+end)
 
 local fEscape=makeFeature("Auto Escape",Enum.KeyCode.Unknown,{
 	onActivate=escapeActivate,onDeactivate=escapeDeactivate
 })
 
-local fPunch=makeFeature("Auto Punch",Enum.KeyCode.Unknown,{
-	onActivate=punchActivate,
-	onDeactivate=punchDeactivate
+local fPunch = makeFeature("Auto Punch", Enum.KeyCode.Unknown, {
+	onActivate = punchActivate,
+	onDeactivate = punchDeactivate
 })
 
 local fCombo=makeFeature("Combo Spam",Enum.KeyCode.P,{
@@ -540,7 +601,6 @@ local fBrass=makeFeature("Brass Knuckles",Enum.KeyCode.Unknown,{
 	onActivate=brassActivate,
 	onDeactivate=brassDeactivate
 })
-
 
 local fLoose=makeFeature("Block LooseFight",Enum.KeyCode.Unknown,{
 	onActivate=toggleLooseFight,onDeactivate=toggleLooseFight
